@@ -1,0 +1,107 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Журнал дій (Audit Log){% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold"><i class="bi bi-shield-check me-2"></i> Журнал дій користувачів</h3>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Користувач (Login)</label>
+                    <input type="text" name="user" class="form-control" value="{{ request.GET.user|default:'' }}" placeholder="Напр: ivan">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Тип дії</label>
+                    <select name="action" class="form-select">
+                        <option value="">Всі дії</option>
+                        {% for code, label in action_types %}
+                            <option value="{{ code }}" {% if request.GET.action == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Дата</label>
+                    <input type="date" name="date" class="form-control" value="{{ request.GET.date|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-dark w-100"><i class="bi bi-search"></i> Пошук</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ ЛОГІВ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 small">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width: 150px;">Час</th>
+                        <th style="width: 150px;">Користувач</th>
+                        <th style="width: 120px;">IP Адреса</th>
+                        <th style="width: 150px;">Дія</th>
+                        <th>Деталі (Що змінилося)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td class="text-muted">{{ log.timestamp|date:"d.m.Y H:i:s" }}</td>
+                        <td>
+                            <div class="fw-bold text-dark">
+                                <i class="bi bi-person-fill text-secondary"></i> {{ log.user.username }}
+                            </div>
+                            <div class="text-muted" style="font-size: 0.85em;">
+                                {% if log.user.is_staff %}Менеджер{% else %}Прораб{% endif %}
+                            </div>
+                        </td>
+                        <td class="font-monospace text-muted">{{ log.ip_address }}</td>
+                        <td>
+                            {% if log.action_type == 'CREATE' %}
+                                <span class="badge bg-success bg-opacity-25 text-success border border-success">Створення</span>
+                            {% elif log.action_type == 'UPDATE' %}
+                                <span class="badge bg-warning bg-opacity-25 text-dark border border-warning">Зміна</span>
+                            {% elif log.action_type == 'DELETE' %}
+                                <span class="badge bg-danger bg-opacity-25 text-danger border border-danger">Видалення</span>
+                            {% elif log.action_type == 'WRITEOFF' %}
+                                <span class="badge bg-dark text-white">Списання</span>
+                            {% elif log.action_type == 'CHANGE_PRICE' %}
+                                <span class="badge bg-info text-dark">Ціна</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ log.get_action_type_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div style="max-width: 600px; word-wrap: break-word;">
+                                {% if log.old_value %}
+                                    <div class="text-danger mb-1"><i class="bi bi-arrow-left-short"></i> Було: {{ log.old_value }}</div>
+                                {% endif %}
+                                {% if log.new_value %}
+                                    <div class="text-success"><i class="bi bi-arrow-right-short"></i> Стало: {{ log.new_value }}</div>
+                                {% endif %}
+                                {% if not log.old_value and not log.new_value %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">
+                            Історія порожня.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-light text-muted small">
+            * Показано останні 200 записів для швидкодії.
+        </div>
+    </div>
+</div>
+{% endblock %}

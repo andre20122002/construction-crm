@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Вхід у систему</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-card { width: 100%; max-width: 400px; padding: 20px; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card shadow login-card">
+    <div class="card-body">
+        <h3 class="text-center mb-4">🏗️ БудСклад</h3>
+        <h5 class="text-center text-muted mb-4">Вхід для співробітників</h5>
+
+        <form method="post">
+            {% csrf_token %}
+            
+            {% if form.errors %}
+                <div class="alert alert-danger text-center">
+                    Невірний логін або пароль
+                </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label class="form-label">Логін</label>
+                <input type="text" name="username" class="form-control" required autofocus>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Пароль</label>
+                <input type="password" name="password" class="form-control" required>
+            </div>
+
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg">Увійти</button>
+            </div>
+        </form>
+    </div>
+    <div class="card-footer text-center text-muted mt-3 bg-white border-0">
+        Система управління логістикою
+    </div>
+</div>
+
+</body>
+</html>

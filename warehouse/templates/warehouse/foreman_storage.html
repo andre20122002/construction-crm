@@ -1,0 +1,126 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Мій Склад{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Стилі для прораба */
+    body { background-color: #212529; color: #e9ecef; }
+    .search-box { background: #343a40; border: 1px solid #495057; color: white; }
+    .search-box:focus { background: #3b4249; color: white; border-color: #0d6efd; box-shadow: none; }
+    
+    .stock-card { 
+        background-color: #2c3034; 
+        border: 1px solid #495057; 
+        color: white;
+        transition: transform 0.1s;
+    }
+    .stock-card:active { transform: scale(0.98); }
+    
+    .quantity-badge {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #fff;
+    }
+    
+    .unit-label { font-size: 0.8rem; color: #adb5bd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3 pb-5" style="max-width: 800px;">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="h4 fw-bold mb-0"><i class="bi bi-boxes me-2"></i> Мій Склад</h3>
+            <small class="text-muted">{{ warehouse.name|default:"Склад не вибрано" }}</small>
+        </div>
+        <div class="text-end">
+            <span class="badge bg-secondary">{{ total_items }} позицій</span>
+        </div>
+    </div>
+
+    <!-- Пошук -->
+    <div class="mb-4 position-relative">
+        <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+        <input type="text" id="stockSearch" class="form-control form-control-lg search-box ps-5" placeholder="Знайти матеріал...">
+    </div>
+
+    <!-- Список -->
+    <div class="row g-3" id="stockGrid">
+        {% for item in stock %}
+        <div class="col-12 col-md-6 stock-item" data-name="{{ item.name|lower }}">
+            <div class="card stock-card shadow-sm h-100">
+                <div class="card-body d-flex justify-content-between align-items-center p-3">
+                    
+                    <!-- Назва -->
+                    <div class="pe-2">
+                        <h6 class="fw-bold mb-1">{{ item.name }}</h6>
+                        {% if item.min_limit > 0 and item.quantity <= item.min_limit %}
+                            <span class="badge bg-danger rounded-pill" style="font-size: 0.6em;">
+                                <i class="bi bi-exclamation-circle"></i> Закінчується
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Кількість -->
+                    <div class="text-end" style="min-width: 80px;">
+                        <div class="quantity-badge text-success">{{ item.quantity }}</div>
+                        <div class="unit-label">{{ item.unit }}</div>
+                    </div>
+
+                </div>
+                
+                <!-- Кнопка швидкого списання -->
+                <div class="card-footer bg-transparent border-top border-secondary p-1">
+                    <!-- Передаємо ID матеріалу в форму списання через GET параметр -->
+                    <a href="{% url 'add_transaction' %}?type=OUT&material={{ item.id }}" class="btn btn-sm btn-link text-decoration-none text-muted w-100">
+                        Списати <i class="bi bi-arrow-right ms-1"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5 text-muted">
+            <i class="bi bi-box2 fs-1 opacity-50 d-block mb-3"></i>
+            Склад порожній.
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div id="noResults" class="text-center text-muted py-5" style="display: none;">
+        <i class="bi bi-search fs-1 opacity-50"></i>
+        <p class="mt-2">Нічого не знайдено</p>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Живий пошук
+    document.getElementById('stockSearch').addEventListener('keyup', function(e) {
+        const term = e.target.value.toLowerCase();
+        const items = document.querySelectorAll('.stock-item');
+        let visibleCount = 0;
+
+        items.forEach(item => {
+            const name = item.getAttribute('data-name');
+            if (name.includes(term)) {
+                item.style.display = 'block';
+                visibleCount++;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+
+        const noResults = document.getElementById('noResults');
+        if (visibleCount === 0 && items.length > 0) {
+            noResults.style.display = 'block';
+        } else {
+            noResults.style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,160 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Звіт про списання{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold"><i class="bi bi-trash3 me-2"></i> Списання матеріалів</h3>
+
+    <!-- АНАЛІТИЧНІ КАРТКИ -->
+    <div class="row g-3 mb-4 no-print">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm border-start border-4 border-warning h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-bold">Витрачено на роботи</div>
+                    <div class="fs-3 fw-bold text-dark">{{ stats.work_sum|floatformat:2 }} ₴</div>
+                    <small class="text-muted"><i class="bi bi-hammer"></i> Будівництво</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm border-start border-4 border-danger h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase fw-bold">Втрати / Бій</div>
+                    <div class="fs-3 fw-bold text-danger">{{ stats.loss_sum|floatformat:2 }} ₴</div>
+                    <small class="text-danger"><i class="bi bi-x-circle"></i> Невиробничі витрати</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-secondary text-white h-100">
+                <div class="card-body">
+                    <div class="opacity-75 small text-uppercase fw-bold">Загалом списано</div>
+                    <div class="fs-3 fw-bold">{{ stats.total_sum|floatformat:2 }} ₴</div>
+                    <small class="opacity-75">За обраний період</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label class="small fw-bold text-muted">Період з</label>
+                    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ f_date_from|default:'' }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="small fw-bold text-muted">по</label>
+                    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ f_date_to|default:'' }}">
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="small fw-bold text-muted">Причина</label>
+                    <select name="reason" class="form-select form-select-sm">
+                        <option value="">Всі типи</option>
+                        <option value="OUT" {% if f_reason == 'OUT' %}selected{% endif %}>🛠️ Роботи</option>
+                        <option value="LOSS" {% if f_reason == 'LOSS' %}selected{% endif %}>🗑️ Бій/Втрата</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="small fw-bold text-muted">Об'єкт</label>
+                    <select name="warehouse" class="form-select form-select-sm">
+                        <option value="">Всі об'єкти</option>
+                        {% for w in warehouses %}
+                            <option value="{{ w.id }}" {% if f_wh == w.id %}selected{% endif %}>{{ w.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="small fw-bold text-muted">Матеріал</label>
+                    <select name="material" class="form-select form-select-sm">
+                        <option value="">Всі матеріали</option>
+                        {% for m in materials %}
+                            <option value="{{ m.id }}" {% if f_mat == m.id %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex gap-1">
+                    <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel"></i></button>
+                    <button type="submit" name="export" value="excel" class="btn btn-success btn-sm w-100"><i class="bi bi-file-excel"></i></button>
+                    <a href="{% url 'writeoff_report' %}" class="btn btn-outline-secondary btn-sm w-100"><i class="bi bi-x-lg"></i></a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-nowrap" style="font-size: 0.9rem;">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Об'єкт</th>
+                        <th>Матеріал</th>
+                        <th>Кількість</th>
+                        <th>Тип</th>
+                        <th>Хто списав</th>
+                        <th>Причина / Коментар</th>
+                        <th class="text-center">Фото</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr>
+                        <td>{{ row.date|date:"d.m.y H:i" }}</td>
+                        <td class="fw-bold">{{ row.warehouse }}</td>
+                        <td>
+                            {{ row.material }}
+                            <div class="text-muted small">
+                                Сума: {{ row.sum }} ₴
+                            </div>
+                        </td>
+                        <td>
+                            <span class="fs-6 fw-bold">{{ row.quantity }}</span> <small class="text-muted">{{ row.unit }}</small>
+                        </td>
+                        <td>
+                            <!-- ВИПРАВЛЕНА ЛОГІКА БЕЙДЖІВ -->
+                            {% if row.type_code == 'OUT' %}
+                                <span class="badge bg-warning text-dark border border-warning bg-opacity-25">Роботи</span>
+                            {% elif row.type_code == 'LOSS' %}
+                                <span class="badge bg-danger text-white">Втрата</span>
+                            {% elif row.type_code == 'TRANSFER' %}
+                                <span class="badge bg-info text-dark">Переміщення</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ row.type_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-person-circle text-secondary me-2"></i>
+                                {{ row.author }}
+                            </div>
+                        </td>
+                        <td class="text-wrap" style="min-width: 200px; max-width: 300px;">
+                            {{ row.reason }}
+                        </td>
+                        <td class="text-center">
+                            {% if row.photo %}
+                                <a href="{{ row.photo }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Переглянути фото">
+                                    <i class="bi bi-image"></i>
+                                </a>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            Списань за обраними критеріями не знайдено.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

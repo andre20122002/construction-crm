@@ -1,0 +1,103 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Історія поставок{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Стилі для прораба (темна тема або адаптація) */
+    body.foreman-mode { background-color: #212529; color: #e9ecef; }
+    
+    .delivery-card {
+        border-left: 5px solid #198754; /* Зелена смужка = Прихід */
+        transition: transform 0.2s;
+    }
+    .delivery-card:active { transform: scale(0.98); }
+    
+    .img-preview {
+        width: 60px; height: 60px; 
+        object-fit: cover; 
+        border-radius: 8px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3 pb-5" style="max-width: 800px;">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="h4 fw-bold"><i class="bi bi-box-seam me-2"></i> Прийняті доставки</h3>
+        <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm">На головну</a>
+    </div>
+
+    <!-- СПИСОК -->
+    <div class="row g-3">
+        {% for item in deliveries %}
+        <div class="col-12">
+            <div class="card shadow-sm delivery-card h-100">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center">
+                        
+                        <!-- ФОТО (Ліворуч) -->
+                        <div class="me-3">
+                            {% if item.photo %}
+                                <a href="{{ item.photo.url }}" target="_blank">
+                                    <img src="{{ item.photo.url }}" class="img-preview" alt="Фото звіту">
+                                </a>
+                            {% else %}
+                                <div class="img-preview d-flex align-items-center justify-content-center text-muted">
+                                    <i class="bi bi-camera-video-off"></i>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- ІНФО (Центр) -->
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h6 class="fw-bold mb-1 text-dark">{{ item.material.name }}</h6>
+                                <small class="text-muted">{{ item.created_at|date:"d.m H:i" }}</small>
+                            </div>
+                            
+                            <div class="mb-1">
+                                <span class="fs-5 fw-bold text-success">+{{ item.quantity }}</span> 
+                                <span class="text-muted small">{{ item.material.unit }}</span>
+                            </div>
+
+                            <div class="small text-muted">
+                                <i class="bi bi-geo-alt me-1"></i> {{ item.warehouse.name }}
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <!-- ДЕТАЛІ (Знизу) -->
+                    <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center small text-muted">
+                        <div>
+                            {% if item.order %}
+                                <span class="badge bg-light text-dark border">Заявка #{{ item.order.id }}</span>
+                            {% else %}
+                                <span class="badge bg-light text-secondary border">Без заявки</span>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Хто прийняв (автор заявки або поточний юзер) -->
+                        <div title="Прийняв">
+                            <i class="bi bi-person-check me-1"></i> 
+                            {{ item.order.created_by.get_full_name|default:request.user.username }}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5 text-muted">
+            <i class="bi bi-box-seam fs-1 opacity-50 d-block mb-3"></i>
+            Ще не було жодної поставки.
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

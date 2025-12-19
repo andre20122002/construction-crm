@@ -1,0 +1,261 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Нова заявка{% endblock %}
+
+{% block extra_css %}
+<style>
+    .item-row {
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        transition: all 0.2s;
+    }
+    .item-row:hover {
+        border-color: #adb5bd;
+    }
+    .btn-remove {
+        color: #dc3545;
+        cursor: pointer;
+    }
+    .btn-remove:hover {
+        color: #a71d2a;
+    }
+    /* Стиль для кнопки додавання фото */
+    .file-upload-wrapper {
+        position: relative;
+        overflow: hidden;
+        display: inline-block;
+        width: 100%;
+    }
+    .file-upload-wrapper input[type=file] {
+        position: absolute;
+        top: 0;
+        right: 0;
+        min-width: 100%;
+        min-height: 100%;
+        font-size: 100px;
+        text-align: right;
+        filter: alpha(opacity=0);
+        opacity: 0;
+        outline: none;
+        background: white;
+        cursor: inherit;
+        display: block;
+    }
+    .file-upload-btn {
+        border: 2px dashed #ced4da;
+        background: #f8f9fa;
+        color: #6c757d;
+        padding: 15px;
+        text-align: center;
+        border-radius: 8px;
+        width: 100%;
+        transition: all 0.2s;
+    }
+    .file-upload-wrapper:hover .file-upload-btn {
+        border-color: #0d6efd;
+        color: #0d6efd;
+        background: #f1f8ff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3 pb-5" style="max-width: 800px;">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <a href="{% url 'index' %}" class="btn btn-light rounded-circle shadow-sm" style="width: 40px; height: 40px; display:flex; align-items:center; justify-content:center;">
+            <i class="bi bi-x-lg"></i>
+        </a>
+        <h4 class="fw-bold mb-0">📝 Створити заявку</h4>
+        <div><!-- spacer --></div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="orderForm">
+        {% csrf_token %}
+        
+        <!-- КРОК 1: ОСНОВНА ІНФОРМАЦІЯ -->
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-white border-0 fw-bold pt-3">
+                📍 Куди та коли?
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted fw-bold">Об'єкт (Склад)</label>
+                        {{ form.warehouse }}
+                        {% if form.warehouse.errors %}
+                            <div class="text-danger small">{{ form.warehouse.errors }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted fw-bold">На дату</label>
+                        {{ form.expected_date }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted fw-bold">Пріоритет</label>
+                        {{ form.priority }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted fw-bold">Загальний коментар</label>
+                        {{ form.note }}
+                    </div>
+                    <!-- Фото -->
+                    <div class="col-12">
+                        <label class="form-label small text-muted fw-bold">Фото / Схема (необов'язково)</label>
+                        <div class="file-upload-wrapper">
+                            <div class="file-upload-btn" id="photo-placeholder">
+                                <i class="bi bi-camera-fill fs-4 mb-2"></i><br>
+                                Натисніть, щоб додати фото
+                            </div>
+                            {{ form.request_photo }}
+                        </div>
+                        <div id="file-name" class="small text-success mt-1" style="display:none;">
+                            <i class="bi bi-check-lg"></i> Файл обрано
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- КРОК 2: СПИСОК ТОВАРІВ -->
+        <h5 class="fw-bold mb-3">📦 Список матеріалів</h5>
+        
+        <!-- MANAGEMENT FORM (Обов'язково!) -->
+        {{ formset.management_form }}
+
+        <div id="formset-container">
+            {% for item_form in formset %}
+                <div class="item-row row g-2 align-items-center">
+                    <!-- Приховані поля ID (для редагування) -->
+                    {% for hidden in item_form.hidden_fields %}
+                        {{ hidden }}
+                    {% endfor %}
+
+                    <div class="col-7 col-md-8">
+                        {% if forloop.first %}<label class="form-label small text-muted">Матеріал</label>{% endif %}
+                        {{ item_form.material }}
+                        {% if item_form.material.errors %}
+                            <div class="text-danger small">{{ item_form.material.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="col-3 col-md-3">
+                        {% if forloop.first %}<label class="form-label small text-muted">Кількість</label>{% endif %}
+                        {{ item_form.quantity }}
+                        {% if item_form.quantity.errors %}
+                            <div class="text-danger small">{{ item_form.quantity.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="col-2 col-md-1 text-center">
+                        {% if forloop.first %}<label class="form-label small text-muted">&nbsp;</label>{% endif %}
+                        <!-- Якщо форма дозволяє видалення -->
+                        {% if formset.can_delete %}
+                            <div class="d-none">{{ item_form.DELETE }}</div>
+                            <i class="bi bi-trash3 btn-remove fs-5 mt-2 d-block" onclick="removeRow(this)"></i>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <button type="button" id="add-item-btn" class="btn btn-outline-primary w-100 py-2 border-dashed mt-2">
+            <i class="bi bi-plus-lg me-1"></i> Додати рядок
+        </button>
+
+        <!-- ПУСТИЙ ШАБЛОН ДЛЯ JS -->
+        <div id="empty-form-template" style="display:none;">
+            <div class="item-row row g-2 align-items-center">
+                <div class="col-7 col-md-8">
+                    {{ formset.empty_form.material }}
+                </div>
+                <div class="col-3 col-md-3">
+                    {{ formset.empty_form.quantity }}
+                </div>
+                <div class="col-2 col-md-1 text-center">
+                    <i class="bi bi-trash3 btn-remove fs-5" onclick="removeRow(this)"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- КНОПКИ ДІЙ -->
+        <div class="fixed-bottom bg-white border-top p-3 shadow-lg">
+            <div class="container d-flex gap-2" style="max-width: 800px;">
+                <button type="submit" name="action" value="draft" class="btn btn-light border flex-grow-1 fw-bold">
+                    <i class="bi bi-save me-1"></i> Чернетка
+                </button>
+                <button type="submit" name="action" value="send" class="btn btn-primary flex-grow-1 fw-bold">
+                    Відправити <i class="bi bi-send-fill ms-1"></i>
+                </button>
+            </div>
+        </div>
+
+    </form>
+</div>
+
+<!-- Extra padding for fixed bottom -->
+<div style="height: 80px;"></div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const container = document.getElementById('formset-container');
+        const addBtn = document.getElementById('add-item-btn');
+        const totalForms = document.getElementById('id_items-TOTAL_FORMS');
+        const emptyTemplate = document.getElementById('empty-form-template').innerHTML;
+
+        // 1. Додавання рядка
+        addBtn.addEventListener('click', function() {
+            const formIdx = totalForms.value;
+            // Замінюємо __prefix__ на поточний індекс (0, 1, 2...)
+            const newRow = emptyTemplate.replace(/__prefix__/g, formIdx);
+            
+            container.insertAdjacentHTML('beforeend', newRow);
+            
+            // Оновлюємо лічильник форм
+            totalForms.value = parseInt(formIdx) + 1;
+            
+            // Ініціалізуємо TomSelect для нового елемента (якщо використовується)
+            // initTomSelects(); 
+        });
+
+        // 2. Обробка фото input
+        const photoInput = document.getElementById('id_request_photo');
+        if(photoInput) {
+            photoInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    document.getElementById('photo-placeholder').style.borderColor = '#198754';
+                    document.getElementById('photo-placeholder').style.color = '#198754';
+                    document.getElementById('photo-placeholder').style.backgroundColor = '#d1e7dd';
+                    document.getElementById('photo-placeholder').innerHTML = '<i class="bi bi-check-lg fs-1"></i>';
+                    
+                    const fileName = document.getElementById('file-name');
+                    fileName.innerHTML = '<i class="bi bi-check-lg"></i> ' + this.files[0].name;
+                    fileName.style.display = 'block';
+                }
+            });
+        }
+    });
+
+    // 3. Видалення рядка
+    function removeRow(btn) {
+        const row = btn.closest('.item-row');
+        // Перевіряємо, чи це існуючий об'єкт (є приховане поле id)
+        const idField = row.querySelector('input[type="hidden"][name$="-id"]');
+        
+        if (idField && idField.value) {
+            // Це існуючий запис: ховаємо рядок і ставимо чекбокс DELETE = checked
+            row.style.display = 'none';
+            const deleteInput = row.querySelector('input[name$="-DELETE"]');
+            if (deleteInput) deleteInput.checked = true;
+        } else {
+            // Це новий динамічний рядок: просто видаляємо з DOM
+            row.remove();
+            // (Опціонально) Можна зменшити TOTAL_FORMS, але Django пропустить пропуски
+        }
+    }
+</script>
+{% endblock %}

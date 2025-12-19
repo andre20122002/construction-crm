@@ -1,0 +1,105 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Топ постачальників{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold"><i class="bi bi-award-fill me-2"></i> Рейтинг постачальників</h3>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Аналіз з дати:</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">по дату:</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Аналізувати</button>
+                </div>
+                <div class="col-md-3 text-end">
+                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-secondary btn-sm">Скинути фільтри</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-dark text-white">
+                    <tr>
+                        <th class="ps-4">Постачальник</th>
+                        <th>Основні матеріали</th>
+                        <th class="text-center">Кількість замовлень</th>
+                        <th class="text-end">Сума закупівель</th>
+                        <th class="text-center">Сер. термін (днів)</th>
+                        <th class="text-center">Надійність</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rating_data %}
+                    <tr>
+                        <td class="ps-4">
+                            <div class="fw-bold fs-5">{{ row.supplier.name }}</div>
+                            <div class="small text-muted"><i class="bi bi-person"></i> {{ row.supplier.contact_person }} | {{ row.supplier.phone }}</div>
+                        </td>
+                        <td class="text-muted small">
+                            {{ row.materials_list|default:"Не вказано" }}...
+                        </td>
+                        <td class="text-center fw-bold fs-5">
+                            {{ row.orders_count }}
+                        </td>
+                        <td class="text-end text-success fw-bold">
+                            {{ row.total_spent|floatformat:2 }} ₴
+                        </td>
+                        <td class="text-center">
+                            <i class="bi bi-clock-history text-secondary me-1"></i> {{ row.avg_delivery }}
+                        </td>
+                        <td class="text-center">
+                            <div class="d-flex align-items-center justify-content-center flex-column">
+                                <span class="badge bg-{{ row.rel_class }} rounded-pill" style="font-size: 0.9em;">
+                                    {{ row.reliability }}%
+                                </span>
+                                <div class="progress w-75 mt-1" style="height: 4px;">
+                                    <!-- Використовуємо data-width, щоб уникнути помилок валідації CSS в редакторі -->
+                                    <div class="progress-bar bg-{{ row.rel_class }}" role="progressbar" data-width="{{ row.reliability }}"></div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="bi bi-people-fill fs-1 opacity-50 mb-2"></i><br>
+                            Даних про постачальників за цей період немає.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-light small text-muted">
+            * <b>Надійність</b> розраховується як відсоток успішних поставок (без відмов, значних затримок або нестач).
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Ініціалізація прогрес-барів через JS для уникнення проблем з локалізацією (коми) та валідацією
+        document.querySelectorAll('.progress-bar[data-width]').forEach(bar => {
+            // Замінюємо кому на крапку, якщо Django локалізував число
+            let width = bar.getAttribute('data-width').replace(',', '.');
+            bar.style.width = width + '%';
+        });
+    });
+</script>
+{% endblock %}

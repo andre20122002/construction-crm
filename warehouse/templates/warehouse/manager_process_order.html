@@ -1,0 +1,130 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Обробка заявки #{{ order.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-option {
+        border: 2px solid #dee2e6;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .card-option:hover { border-color: #aaa; }
+    .btn-check:checked + .card-option {
+        border-color: #0d6efd;
+        background-color: #f0f7ff;
+    }
+    .stock-badge {
+        font-size: 0.9em;
+        padding: 5px 10px;
+        border-radius: 20px;
+        background: #e9ecef;
+        color: #495057;
+    }
+    .stock-badge.available {
+        background: #d1e7dd;
+        color: #0f5132;
+        border: 1px solid #badbcc;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5" style="max-width: 800px;">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4>⚡ Обробка заявки <span class="text-muted">#{{ order.id }}</span></h4>
+        <a href="{% url 'order_list' %}" class="btn btn-outline-secondary">Назад</a>
+    </div>
+
+    <!-- ІНФО ПРО ЗАЯВКУ -->
+    <div class="card shadow-sm mb-4 border-start border-4 border-primary">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <small class="text-muted text-uppercase">Що потрібно</small>
+                    <h3 class="fw-bold text-primary">{{ order.material.name }}</h3>
+                    <div class="fs-5 fw-bold">{{ order.quantity }} <span class="text-muted fs-6">{{ order.material.unit }}</span></div>
+                </div>
+                <div class="col-md-6 border-start">
+                    <small class="text-muted text-uppercase">Куди</small>
+                    <div class="fw-bold">{{ order.warehouse.name }}</div>
+                    <div class="text-muted small">Автор: {{ order.created_by.get_full_name }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ОСНОВНА ФОРМА -->
+    <form method="post">
+        {% csrf_token %}
+        
+        <h5 class="mb-3">Рішення</h5>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <input type="radio" class="btn-check" name="action" id="optPurchase" value="approve_purchase" checked onchange="toggleForm()">
+                <label class="card card-option h-100 p-3" for="optPurchase">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-cart-plus fs-2 text-warning me-3"></i>
+                        <h5 class="mb-0">Закупівля</h5>
+                    </div>
+                    <p class="text-muted small mb-0">Купити у постачальника.</p>
+                </label>
+            </div>
+
+            <div class="col-md-6">
+                <input type="radio" class="btn-check" name="action" id="optTransfer" value="approve_transfer" onchange="toggleForm()">
+                <label class="card card-option h-100 p-3" for="optTransfer">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-truck fs-2 text-info me-3"></i>
+                        <h5 class="mb-0">Переміщення</h5>
+                    </div>
+                    <p class="text-muted small mb-0">Взяти зі складу.</p>
+                    {% if main_warehouses %}
+                        <div class="mt-2 pt-2 border-top">
+                            {% for wh in main_warehouses %}
+                                <div class="stock-badge available">
+                                    {{ wh.name }} (Головний)
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </label>
+            </div>
+        </div>
+
+        <!-- ДЕТАЛІ (JS перемикає видимість) -->
+        <div id="block-purchase" class="card bg-white shadow-sm p-4 mb-3">
+            <div class="mb-3">
+                <label class="form-label">Постачальник / Коментар</label>
+                <input type="text" name="supplier" class="form-control" placeholder="Напр. Епіцентр">
+            </div>
+        </div>
+
+        <div id="block-transfer" class="card bg-white shadow-sm p-4 mb-3" style="display: none;">
+            <div class="mb-3">
+                <label class="form-label">Звідки забрати?</label>
+                <select name="source_warehouse" class="form-select">
+                    {% for wh in main_warehouses %}
+                        <option value="{{ wh.id }}">{{ wh.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between mt-4">
+            <button type="submit" name="action" value="reject" class="btn btn-outline-danger">Відхилити</button>
+            <button type="submit" class="btn btn-primary btn-lg px-5">Підтвердити</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function toggleForm() {
+        const isTransfer = document.getElementById('optTransfer').checked;
+        document.getElementById('block-purchase').style.display = isTransfer ? 'none' : 'block';
+        document.getElementById('block-transfer').style.display = isTransfer ? 'block' : 'none';
+    }
+</script>
+{% endblock %}

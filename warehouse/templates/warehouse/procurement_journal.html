@@ -1,0 +1,92 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Журнал закупівель{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="h4 fw-bold"><i class="bi bi-journal-text me-2"></i> Журнал закупівель</h3>
+        <div class="text-end">
+            <span class="badge bg-primary fs-6">Всього за період: {{ total_period_sum }} ₴</span>
+        </div>
+    </div>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">З дати</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">По дату</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-dark w-100"><i class="bi bi-funnel"></i> Фільтрувати</button>
+                    <a href="{% url 'procurement_journal' %}" class="btn btn-outline-secondary" title="Скинути"><i class="bi bi-x-lg"></i></a>
+                </div>
+                <div class="col-md-3 text-end">
+                    <button type="submit" name="export" value="excel" class="btn btn-success text-white w-100">
+                        <i class="bi bi-file-earmark-excel"></i> Завантажити Excel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle mb-0" style="font-size: 0.9rem;">
+                <thead class="table-dark text-center">
+                    <tr>
+                        <th>ID</th>
+                        <th>Дата ств.</th>
+                        <th>Статус</th>
+                        <th>Менеджер</th>
+                        <th>Об'єкт / Прораб</th>
+                        <th>Матеріал</th>
+                        <th>Постачальник</th>
+                        <th>Ціна</th>
+                        <th>К-сть</th>
+                        <th>Сума</th>
+                        <th>Дата зак.</th>
+                        <th>Коментар</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in journal %}
+                    <tr>
+                        <td class="text-center fw-bold">#{{ row.order_id }}</td>
+                        <td class="text-center">{{ row.created_at|date:"d.m.y" }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border">{{ row.status }}</span>
+                        </td>
+                        <td>{{ row.manager }}</td>
+                        <td>{{ row.warehouse }}</td>
+                        <td>
+                            <b>{{ row.material }}</b>
+                        </td>
+                        <td>{{ row.supplier }}</td>
+                        <td class="text-end">{{ row.price_unit }}</td>
+                        <td class="text-center fw-bold">{{ row.quantity }} <small class="text-muted">{{ row.unit }}</small></td>
+                        <td class="text-end fw-bold text-success">{{ row.total_cost }}</td>
+                        <td class="text-center">{{ row.purchase_date|date:"d.m.y" }}</td>
+                        <td class="small text-muted text-truncate" style="max-width: 150px;" title="{{ row.note }}">
+                            {{ row.note }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="12" class="text-center py-4 text-muted">Записів не знайдено</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

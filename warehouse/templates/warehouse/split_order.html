@@ -1,0 +1,78 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Розділення заявки #{{ order.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 900px;">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4>✂️ Розділення заявки #{{ order.id }}</h4>
+        <a href="{% url 'manager_order_detail' order.id %}" class="btn btn-outline-secondary">Скасувати</a>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        Оберіть, до якої нової заявки віднести кожен товар. Товари, позначені як <b>"Залишити в основній"</b>, залишаться в заявці #{{ order.id }}.
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="card shadow-sm border-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th style="width: 40%;">Товар</th>
+                            <th style="width: 20%;">Поточна група</th>
+                            <th style="width: 40%;">Куди перенести?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>
+                                <strong>{{ item.material.name }}</strong>
+                                <div class="text-muted small">{{ item.quantity }} {{ item.material.unit }}</div>
+                            </td>
+                            <td>
+                                <!-- Авто-підказка -->
+                                {% with best_price=item.material.supplier_prices.first %}
+                                    {% if best_price %}
+                                        <span class="badge bg-success bg-opacity-10 text-success border border-success">
+                                            {{ best_price.supplier.name }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-light text-muted border">Невідомий</span>
+                                    {% endif %}
+                                {% endwith %}
+                            </td>
+                            <td>
+                                <!-- Вибір групи -->
+                                <select name="item_{{ item.id }}" class="form-select border-primary bg-primary bg-opacity-10">
+                                    <option value="original" selected>⤵️ Залишити в основній (#{{ order.id }})</option>
+                                    
+                                    <optgroup label="Створити нові заявки для:">
+                                        {% for sup_id, sup in suppliers_map.items %}
+                                            <option value="sup_{{ sup.id }}">➔ {{ sup.name }} (Нова заявка)</option>
+                                        {% endfor %}
+                                        <option value="manual_1">➔ Інше замовлення №1</option>
+                                        <option value="manual_2">➔ Інше замовлення №2</option>
+                                    </optgroup>
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="card-footer bg-white p-3 text-end">
+                <button type="submit" class="btn btn-primary btn-lg shadow">
+                    <i class="bi bi-layers-half me-2"></i> Підтвердити розділення
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

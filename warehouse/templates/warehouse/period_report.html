@@ -1,0 +1,96 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Оборотна відомість{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4">📅 Оборотна відомість матеріалів</h3>
+
+    <!-- Фільтр -->
+    <div class="card shadow-sm mb-4 no-print">
+        <div class="card-body bg-light">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    {{ form.start_date.label_tag }}
+                    {{ form.start_date }}
+                </div>
+                <div class="col-md-3">
+                    {{ form.end_date.label_tag }}
+                    {{ form.end_date }}
+                </div>
+                <div class="col-md-3">
+                    {{ form.warehouse.label_tag }}
+                    {{ form.warehouse }}
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Сформувати
+                    </button>
+                    <button type="submit" name="export" value="excel" class="btn btn-success" title="Завантажити Excel">
+                        <i class="bi bi-file-earmark-excel"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Результати -->
+    {% if results %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0">
+            <h5 class="mb-0">
+                Звіт {% if warehouse %}по складу: <b>{{ warehouse.name }}</b>{% else %}по всій компанії{% endif %}
+                <small class="text-muted fs-6 ms-2">({{ request.GET.start_date }} — {{ request.GET.end_date }})</small>
+            </h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle table-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Категорія</th> <!-- НОВА КОЛОНКА -->
+                        <th>Матеріал</th>
+                        <th class="text-center">Од.</th>
+                        <th class="text-end bg-secondary bg-opacity-25">Початок</th>
+                        <th class="text-end text-success">+ Прихід</th>
+                        <th class="text-end text-danger">- Витрата</th>
+                        <th class="text-end bg-primary bg-opacity-25">Кінець</th>
+                        <th class="text-end">Сума (грн)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in results %}
+                    <tr>
+                        <!-- Виводимо категорію сірим кольором -->
+                        <td class="text-muted small fw-bold">{{ row.category }}</td>
+                        
+                        <td class="fw-bold">{{ row.material.name }}</td>
+                        <td class="text-center small">{{ row.material.unit }}</td>
+                        
+                        <!-- Початковий залишок -->
+                        <td class="text-end border-end bg-light">{{ row.start_balance }}</td>
+                        
+                        <!-- Обороти -->
+                        <td class="text-end text-success opacity-75">
+                            {% if row.income > 0 %}+{{ row.income }}{% else %}-{% endif %}
+                        </td>
+                        <td class="text-end text-danger opacity-75 border-end">
+                            {% if row.outcome > 0 %}-{{ row.outcome }}{% else %}-{% endif %}
+                        </td>
+                        
+                        <!-- Кінцевий залишок -->
+                        <td class="text-end fw-bold bg-light text-primary border-end">{{ row.end_balance }}</td>
+                        
+                        <td class="text-end small">{{ row.total_value }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+        <div class="alert alert-info text-center mt-4">
+            Натисніть "Сформувати", щоб побачити дані за поточний період.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

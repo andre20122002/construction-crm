@@ -1,0 +1,75 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Довідник матеріалів - БудСклад{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="h4 mb-0">📚 Довідник матеріалів</h3>
+        {% if user.is_staff %}
+        <a href="/admin/warehouse/material/add/" class="btn btn-primary btn-sm" target="_blank">
+            <i class="bi bi-plus-lg"></i> Додати новий
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Фільтр -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <input type="text" id="searchInput" class="form-control" placeholder="🔍 Пошук за назвою або артикулом...">
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-3 row-cols-xl-4 g-4" id="materialsGrid">
+        {% for mat in materials %}
+        <div class="col material-card" data-name="{{ mat.name|lower }} {{ mat.article|lower }}">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="badge bg-light text-secondary border">{{ mat.article }}</span>
+                        {% if mat.total_stock > 0 %}
+                            <span class="badge bg-success bg-opacity-10 text-success">В наявності</span>
+                        {% else %}
+                            <span class="badge bg-light text-muted">Немає</span>
+                        {% endif %}
+                    </div>
+                    
+                    <h6 class="card-title fw-bold mb-1">
+                        <a href="{% url 'material_detail' mat.pk %}" class="text-decoration-none text-dark stretched-link">
+                            {{ mat.name }}
+                        </a>
+                    </h6>
+                    <p class="text-muted small mb-3">Од. виміру: {{ mat.get_unit_display }}</p>
+
+                    <div class="d-flex justify-content-between align-items-end mt-auto">
+                        <div>
+                            <small class="text-muted d-block" style="font-size: 0.75rem;">Загальний залишок</small>
+                            <span class="fw-bold fs-5">{{ mat.total_stock }}</span> <small>{{ mat.unit }}</small>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted d-block" style="font-size: 0.75rem;">Ціна (сер.)</small>
+                            <span class="fw-bold">{{ mat.current_avg_price }} ₴</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5">
+            <p class="text-muted">Матеріалів ще не додано.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    document.getElementById('searchInput').addEventListener('keyup', function(e) {
+        const term = e.target.value.toLowerCase();
+        document.querySelectorAll('.material-card').forEach(card => {
+            const text = card.getAttribute('data-name');
+            card.style.display = text.includes(term) ? 'block' : 'none';
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Історія руху матеріалів{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="fw-bold"><i class="bi bi-clock-history me-2"></i> Історія руху матеріалів</h3>
+        <button onclick="window.print()" class="btn btn-outline-dark no-print"><i class="bi bi-printer"></i> Друк PDF</button>
+    </div>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <!-- Дата: займають по 2 колонки на великих екранах, по 6 на мобільних -->
+                <div class="col-6 col-lg-2">
+                    <label class="small fw-bold text-muted">З дати</label>
+                    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ f_date_from|default:'' }}">
+                </div>
+                <div class="col-6 col-lg-2">
+                    <label class="small fw-bold text-muted">По дату</label>
+                    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ f_date_to|default:'' }}">
+                </div>
+                
+                <!-- Тип операції -->
+                <div class="col-12 col-md-4 col-lg-2">
+                    <label class="small fw-bold text-muted">Операція</label>
+                    <select name="type" class="form-select form-select-sm">
+                        <option value="">Всі операції</option>
+                        <option value="IN" {% if f_type == 'IN' %}selected{% endif %}>🟢 Надходження</option>
+                        <option value="OUT" {% if f_type == 'OUT' %}selected{% endif %}>🔴 Списання</option>
+                        <option value="TRANSFER" {% if f_type == 'TRANSFER' %}selected{% endif %}>🔵 Переміщення</option>
+                        <option value="LOSS" {% if f_type == 'LOSS' %}selected{% endif %}>⚫ Втрати</option>
+                    </select>
+                </div>
+
+                <!-- Матеріал -->
+                <div class="col-12 col-md-4 col-lg-2">
+                    <label class="small fw-bold text-muted">Матеріал</label>
+                    <select name="material" class="form-select form-select-sm">
+                        <option value="">Всі</option>
+                        {% for m in materials %}
+                            <option value="{{ m.id }}" {% if f_mat == m.id %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Склад -->
+                <div class="col-12 col-md-4 col-lg-2">
+                    <label class="small fw-bold text-muted">Склад</label>
+                    <select name="warehouse" class="form-select form-select-sm">
+                        <option value="">Всі</option>
+                        {% for w in warehouses %}
+                            <option value="{{ w.id }}" {% if f_wh == w.id %}selected{% endif %}>{{ w.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Кнопки: на весь рядок на мобільному, авто-ширина на ПК -->
+                <div class="col-12 col-lg-2 d-flex gap-1">
+                    <button type="submit" class="btn btn-primary btn-sm flex-grow-1" title="Фільтрувати">
+                        <i class="bi bi-search"></i> <span class="d-lg-none">Пошук</span>
+                    </button>
+                    <button type="submit" name="export" value="excel" class="btn btn-success btn-sm flex-grow-1" title="Excel">
+                        <i class="bi bi-file-earmark-excel"></i> <span class="d-lg-none">Excel</span>
+                    </button>
+                    <a href="{% url 'movement_history' %}" class="btn btn-outline-secondary btn-sm flex-grow-1" title="Скинути">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-nowrap" style="font-size: 0.9rem;">
+                <thead class="bg-dark text-white">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Операція</th>
+                        <th>Матеріал</th>
+                        <th>Кількість</th>
+                        <th>Склад-Відправник</th>
+                        <th>Склад-Одержувач</th>
+                        <th>Хто виконав</th>
+                        <th>Підстава</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in history %}
+                    <tr>
+                        <!-- Дата -->
+                        <td>{{ row.date|date:"d.m.Y H:i" }}</td>
+                        
+                        <!-- Тип операції -->
+                        <td>
+                            {% if row.type_code == 'IN' %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success">Надходження</span>
+                            {% elif row.type_code == 'OUT' %}
+                                <span class="badge bg-warning bg-opacity-10 text-dark border border-warning">Списання</span>
+                            {% elif row.type_code == 'TRANSFER' %}
+                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary">Переміщення</span>
+                            {% elif row.type_code == 'LOSS' %}
+                                <span class="badge bg-danger text-white">Втрати</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Матеріал (Drill-down) -->
+                        <td class="fw-bold">
+                            <a href="{% url 'material_detail' row.material_id %}" class="text-decoration-none text-dark">
+                                {{ row.material }}
+                            </a>
+                        </td>
+
+                        <!-- Кількість -->
+                        <td>
+                            <span class="fw-bold fs-6">{{ row.quantity }}</span> <span class="text-muted small">{{ row.unit }}</span>
+                        </td>
+
+                        <!-- Відправник -->
+                        <td class="text-muted">{{ row.sender }}</td>
+
+                        <!-- Отримувач -->
+                        <td class="fw-bold text-dark">{{ row.receiver }}</td>
+
+                        <!-- Хто виконав -->
+                        <td>
+                            {% if row.user != "-" %}
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-person-circle text-secondary me-1"></i> {{ row.user }}
+                                </div>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Підстава (Drill-down) -->
+                        <td>
+                            {% if row.order_id %}
+                                <a href="{% url 'manager_order_detail' row.order_id %}" class="badge bg-light text-primary border text-decoration-none border-primary">
+                                    <i class="bi bi-file-text me-1"></i> {{ row.basis }}
+                                </a>
+                            {% else %}
+                                <small class="text-muted">{{ row.desc }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            Руху матеріалів за цими параметрами не знайдено.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

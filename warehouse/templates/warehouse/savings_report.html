@@ -1,0 +1,95 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Управлінський звіт: Економія{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold text-success"><i class="bi bi-graph-up-arrow me-2"></i> Ефективність закупівель (Економія)</h3>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Період з</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">по</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Аналізувати</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="card border-0 shadow-sm bg-success text-white mb-4">
+        <div class="card-body p-4 d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="opacity-75 text-uppercase">Віртуальний прибуток (Економія)</h5>
+                <div class="small opacity-50">Різниця між ціною закупки та поточною ринковою ціною</div>
+            </div>
+            <div class="display-4 fw-bold">
+                +{{ total_savings }} <span class="fs-4">₴</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-start ps-4">Матеріал / Об'єкт</th>
+                        <th>Дата списання</th>
+                        <th>Кількість</th>
+                        <th class="text-muted">Собівартість<br><small>(Середня)</small></th>
+                        <th class="text-primary">Ринкова ціна<br><small>(Поточна)</small></th>
+                        <th>Різниця<br>(за од.)</th>
+                        <th class="text-end pe-4">Економія</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr>
+                        <td class="text-start ps-4">
+                            <div class="fw-bold">{{ row.material }}</div>
+                            <small class="text-muted">{{ row.warehouse }}</small>
+                        </td>
+                        <td>{{ row.date|date:"d.m.Y" }}</td>
+                        <td class="fw-bold">{{ row.qty }} <small>{{ row.unit }}</small></td>
+                        
+                        <td class="text-muted">{{ row.cost_price }} ₴</td>
+                        <td class="text-primary fw-bold">{{ row.market_price }} ₴</td>
+                        
+                        <td>
+                            {% if row.diff > 0 %}
+                                <span class="badge bg-success text-white">+{{ row.diff }} ₴</span>
+                            {% elif row.diff < 0 %}
+                                <span class="badge bg-danger text-white">{{ row.diff }} ₴</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="text-end pe-4 fw-bold fs-5 {% if row.saving > 0 %}text-success{% elif row.saving < 0 %}text-danger{% endif %}">
+                            {{ row.saving|floatformat:2 }} ₴
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center py-5 text-muted">Немає даних для аналізу. Закупівель за новими цінами ще не було?</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white small text-muted">
+            * <b>Собівартість:</b> Ціна, за якою матеріал обліковувався на складі (середня зважена).<br>
+            * <b>Ринкова ціна:</b> Ціна останньої закупівлі цього матеріалу.
+        </div>
+    </div>
+</div>
+{% endblock %}

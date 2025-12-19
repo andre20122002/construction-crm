@@ -1,0 +1,154 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Порівняння об'єктів{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold"><i class="bi bi-buildings-fill me-2"></i> Порівняння об'єктів (Бюджети)</h3>
+
+    <!-- ГРАФІК -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-white border-0 fw-bold">
+            📊 Бюджет vs Фактичні витрати
+        </div>
+        <div class="card-body">
+            <canvas id="comparisonChart" style="max-height: 400px;"></canvas>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+            <span class="fw-bold">Деталізація по об'єктах</span>
+            <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print"><i class="bi bi-printer"></i> Друк</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="bg-dark text-white">
+                    <tr>
+                        <th class="text-start">Об'єкт</th>
+                        <th>МВО (Відповідальний)</th>
+                        <th>Загальний бюджет</th>
+                        <th>Витрачено (Факт)</th>
+                        <th>В роботі (Заявки)</th>
+                        <th>Залишок бюджету</th>
+                        <th>Прогноз (після заявок)</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr>
+                        <td class="text-start fw-bold">{{ row.name }}</td>
+                        <td class="small text-muted">{{ row.responsible }}</td>
+                        
+                        <!-- Бюджет -->
+                        <td class="fw-bold">{{ row.budget|floatformat:0 }} ₴</td>
+                        
+                        <!-- Витрачено -->
+                        <td class="text-danger fw-bold">-{{ row.spent|floatformat:0 }} ₴</td>
+                        
+                        <!-- В роботі -->
+                        <td class="text-warning small">-{{ row.active_commitments|floatformat:0 }} ₴</td>
+                        
+                        <!-- Залишок (фактичний) -->
+                        <td class="fw-bold {% if row.balance < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ row.balance|floatformat:0 }} ₴
+                        </td>
+
+                        <!-- Прогноз -->
+                        <td class="fw-bold {% if row.forecast < 0 %}text-danger{% else %}text-primary{% endif %}">
+                            {{ row.forecast|floatformat:0 }} ₴
+                        </td>
+
+                        <!-- Статус -->
+                        <td>
+                            {% if row.status == 'critical' %}
+                                <span class="badge bg-danger">ПЕРЕВИТРАТА!</span>
+                            {% elif row.status == 'warning' %}
+                                <span class="badge bg-warning text-dark">Критично</span>
+                            {% else %}
+                                <span class="badge bg-success">В нормі</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="8" class="py-4 text-muted">Об'єктів не знайдено</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-light small text-muted">
+            * <b>В роботі</b> — сума активних заявок, які ще не списані.<br>
+            * <b>Прогноз</b> = Бюджет - Витрачено - В роботі. Показує реальний залишок коштів після виконання всіх поточних планів.
+        </div>
+    </div>
+</div>
+
+<!-- DATA FOR JS -->
+<script id="chart-labels" type="application/json">{{ chart_labels|safe }}</script>
+<script id="chart-budget" type="application/json">{{ chart_budget|safe }}</script>
+<script id="chart-spent" type="application/json">{{ chart_spent|safe }}</script>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const labels = JSON.parse(document.getElementById('chart-labels').textContent);
+        const budget = JSON.parse(document.getElementById('chart-budget').textContent);
+        const spent = JSON.parse(document.getElementById('chart-spent').textContent);
+
+        new Chart(document.getElementById('comparisonChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Фактичні витрати',
+                        data: spent,
+                        backgroundColor: '#dc3545',
+                        borderRadius: 4,
+                        order: 1
+                    },
+                    {
+                        label: 'Бюджетний ліміт',
+                        data: budget,
+                        backgroundColor: '#198754',
+                        // Робимо бюджет трохи ширшим і прозорішим, щоб було видно накладання
+                        backgroundColor: 'rgba(25, 135, 84, 0.2)',
+                        borderColor: '#198754',
+                        borderWidth: 2,
+                        borderRadius: 4,
+                        type: 'bar', 
+                        barPercentage: 1.2, // Ширший стовпчик
+                        order: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            afterBody: function(context) {
+                                // Додаємо розрахунок залишку в тултіп
+                                const idx = context[0].dataIndex;
+                                const b = budget[idx];
+                                const s = spent[idx];
+                                const diff = b - s;
+                                return `Залишок: ${diff.toFixed(2)} ₴`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

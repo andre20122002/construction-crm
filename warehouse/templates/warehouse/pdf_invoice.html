@@ -1,0 +1,169 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <title>Накладна №{{ order.id }}</title>
+    <style>
+        @font-face {
+            font-family: 'UkrFont';
+            src: url(data:font/ttf;base64,{{ font_base64 }});
+        }
+
+        body { 
+            font-family: 'UkrFont', sans-serif; 
+            font-size: 14px; 
+            padding: 40px;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        /* Заголовок */
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+        .title { font-size: 26px; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        .subtitle { font-size: 14px; color: #555; }
+        
+        /* Інфо блок */
+        .info-section { width: 100%; margin-bottom: 30px; }
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table td { padding: 8px; vertical-align: top; }
+        
+        /* Стилі колонок */
+        .col-sender { width: 35%; }
+        .col-receiver { width: 35%; }
+        .col-qr { width: 30%; text-align: right; }
+
+        .label { font-weight: bold; color: #555; font-size: 0.9em; text-transform: uppercase; margin-bottom: 3px; display: block; }
+        .value { font-size: 1.1em; line-height: 1.4; }
+        
+        /* QR Code */
+        .qr-img { width: 110px; height: 110px; border: 1px solid #eee; padding: 5px; }
+        .qr-text { font-size: 10px; color: #777; margin-top: 5px; text-transform: uppercase; }
+
+        /* Таблиця товарів */
+        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 50px; margin-top: 20px; }
+        .items-table th { background-color: #f1f3f5; border: 1px solid #333; padding: 12px; text-align: center; font-weight: bold; }
+        .items-table td { border: 1px solid #333; padding: 12px; text-align: center; vertical-align: middle; }
+        .items-table td.left-align { text-align: left; }
+        
+        /* Підписи */
+        .signatures { width: 100%; margin-top: 80px; }
+        .signatures td { width: 50%; text-align: center; font-size: 14px; vertical-align: top; padding: 0 20px; }
+        .sign-line { border-top: 1px solid #333; width: 100%; margin-bottom: 10px; }
+        
+        /* Кнопки друку */
+        .no-print { margin-bottom: 30px; text-align: right; border-bottom: 1px dashed #ccc; padding-bottom: 15px; }
+        .btn-print { padding: 10px 25px; font-size: 16px; background: #212529; color: white; border: none; cursor: pointer; border-radius: 5px; transition: background 0.2s; }
+        .btn-print:hover { background: #000; }
+
+        @media print {
+            body { padding: 0; margin: 0; }
+            .no-print { display: none; }
+            .card { border: none !important; }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="no-print">
+        <button onclick="window.print()" class="btn-print">🖨️ Друк / Зберегти як PDF</button>
+        <button onclick="history.back()" style="padding: 10px 20px; font-size: 16px; background: #fff; color: #333; border: 1px solid #ccc; cursor: pointer; border-radius: 5px; margin-left: 10px;">← Назад</button>
+    </div>
+
+    <div class="header">
+        <div class="title">Видаткова Накладна № {{ order.id }}</div>
+        <div class="subtitle">від {{ order.created_at|date:"d.m.Y H:i" }}</div>
+    </div>
+
+    <div class="info-section">
+        <table class="info-table">
+            <tr>
+                <!-- ВІДПРАВНИК -->
+                <td class="col-sender">
+                    <span class="label">Відправник:</span>
+                    <div class="value">
+                        {% if order.source_warehouse %}
+                            <strong>{{ order.source_warehouse.name }}</strong><br>
+                            <small>{{ order.source_warehouse.address }}</small>
+                        {% else %}
+                            <strong>{{ order.supplier_info|default:"Постачальник (Зовнішній)" }}</strong>
+                        {% endif %}
+                    </div>
+                </td>
+                
+                <!-- ОТРИМУВАЧ -->
+                <td class="col-receiver">
+                    <span class="label">Отримувач:</span>
+                    <div class="value">
+                        <strong>{{ order.warehouse.name }}</strong><br>
+                        <small>{{ order.warehouse.address }}</small>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <span class="label">Статус:</span>
+                        <strong>{{ order.get_status_display }}</strong>
+                    </div>
+                </td>
+
+                <!-- QR CODE (ПОВЕРНУТО) -->
+                <td class="col-qr">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={{ request.scheme }}://{{ request.get_host }}{% url 'confirm_receipt' order.id %}" class="qr-img" />
+                    <div class="qr-text">Сканувати для прийому</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 50px;">№</th>
+                <th>Найменування товару</th>
+                <th style="width: 120px;">Артикул</th>
+                <th style="width: 80px;">Од.</th>
+                <th style="width: 100px;">Кількість</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="left-align">
+                    <span style="font-size: 1.1em; font-weight: bold;">{{ item.material.name }}</span>
+                </td>
+                <td>{{ item.material.article }}</td>
+                <td>{{ item.material.unit }}</td>
+                <td>
+                    <span style="font-size: 1.2em; font-weight: bold;">{{ item.quantity|floatformat:2 }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    {% if order.note %}
+    <div style="margin-bottom: 30px; font-style: italic; color: #555;">
+        <strong>Коментар:</strong> {{ order.note }}
+    </div>
+    {% endif %}
+
+    <table class="signatures">
+        <tr>
+            <td>
+                <div class="sign-line"></div>
+                <b>Відпустив</b><br>
+                <small>(Посада, підпис, прізвище)</small>
+            </td>
+            <td>
+                <div class="sign-line"></div>
+                <b>Отримав</b><br>
+                <small>(Посада, підпис, прізвище)</small>
+            </td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 60px; text-align: center; font-size: 10px; color: #999;">
+        Згенеровано автоматично в системі "БудСклад ERP"
+    </div>
+
+</body>
+</html>

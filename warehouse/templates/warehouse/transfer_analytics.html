@@ -1,0 +1,192 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Аналітика логістики{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold"><i class="bi bi-graph-up-arrow me-2"></i> Аналітика переміщень</h3>
+
+    <!-- ФІЛЬТРИ -->
+    <form method="get" class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted">Період з</label>
+                <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="small fw-bold text-muted">по</label>
+                <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-arrow-repeat"></i> Оновити</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- KPI КАРТКИ -->
+    <div class="row g-3 mb-4">
+        <!-- Всього переміщень -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-white bg-opacity-25 p-3 me-3">
+                        <i class="bi bi-truck fs-3"></i>
+                    </div>
+                    <div>
+                        <div class="h2 fw-bold mb-0">{{ total_moves }}</div>
+                        <div class="opacity-75 small">Всього рейсів за період</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Середній час -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 bg-info text-white">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-white bg-opacity-25 p-3 me-3">
+                        <i class="bi bi-stopwatch fs-3"></i>
+                    </div>
+                    <div>
+                        <div class="h2 fw-bold mb-0">{{ avg_hours }} <small class="fs-6">год.</small></div>
+                        <div class="opacity-75 small">Середній час доставки</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Проблеми (Втрати) -->
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 {% if loss_cases > 0 %}bg-danger{% else %}bg-success{% endif %} text-white">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle bg-white bg-opacity-25 p-3 me-3">
+                        <i class="bi bi-exclamation-triangle fs-3"></i>
+                    </div>
+                    <div>
+                        <div class="h2 fw-bold mb-0">{{ loss_cases }}</div>
+                        <div class="opacity-75 small">Випадків нестачі/втрат</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ГРАФІКИ -->
+    <div class="row g-4 mb-4">
+        <!-- ТОП МАТЕРІАЛІВ -->
+        <div class="col-lg-6">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white fw-bold border-0">
+                    📦 Найчастіше переміщувані матеріали
+                </div>
+                <div class="card-body">
+                    <canvas id="matChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ТОП МАРШРУТІВ -->
+        <div class="col-lg-6">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white fw-bold border-0">
+                    🛣️ Найбільш завантажені маршрути
+                </div>
+                <div class="card-body">
+                    <canvas id="routeChart" style="max-height: 300px;"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ДЕТАЛЬНА ТАБЛИЦЯ МАРШРУТІВ -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white border-0 fw-bold">
+            Деталізація по напрямках
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Маршрут (Звідки -> Куди)</th>
+                        <th class="text-center">Кількість рейсів</th>
+                        <th class="text-end">Частка (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for route in routes %}
+                    <tr>
+                        <td>
+                            <i class="bi bi-geo-alt text-secondary"></i> {{ route.source_warehouse__name }} 
+                            <i class="bi bi-arrow-right mx-2 text-primary"></i> 
+                            {{ route.warehouse__name }}
+                        </td>
+                        <td class="text-center fw-bold">{{ route.trips }}</td>
+                        <td class="text-end">
+                            <!-- Простий розрахунок відсотка у шаблоні -->
+                            {% widthratio route.trips total_moves 100 %}%
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3" class="text-center text-muted p-3">Немає даних</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ДАНІ ДЛЯ JS -->
+<script id="mat-labels" type="application/json">{{ mat_labels|safe }}</script>
+<script id="mat-data" type="application/json">{{ mat_data|safe }}</script>
+<script id="route-labels" type="application/json">{{ route_labels|safe }}</script>
+<script id="route-data" type="application/json">{{ route_data|safe }}</script>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function getData(id) { return JSON.parse(document.getElementById(id).textContent); }
+
+        // 1. МАТЕРІАЛИ (Pie Chart)
+        new Chart(document.getElementById('matChart'), {
+            type: 'pie',
+            data: {
+                labels: getData('mat-labels'),
+                datasets: [{
+                    data: getData('mat-data'),
+                    backgroundColor: ['#0d6efd', '#20c997', '#ffc107', '#dc3545', '#6f42c1'],
+                    borderWidth: 1
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'right' } } 
+            }
+        });
+
+        // 2. МАРШРУТИ (Horizontal Bar)
+        new Chart(document.getElementById('routeChart'), {
+            type: 'bar',
+            data: {
+                labels: getData('route-labels'),
+                datasets: [{
+                    label: 'Кількість рейсів',
+                    data: getData('route-data'),
+                    backgroundColor: '#0dcaf0',
+                    borderRadius: 5
+                }]
+            },
+            options: { 
+                indexAxis: 'y', // Робить графік горизонтальним
+                responsive: true, 
+                maintainAspectRatio: false,
+                scales: { x: { beginAtZero: true } }
+            }
+        });
+    });
+</script>
+{% endblock %}

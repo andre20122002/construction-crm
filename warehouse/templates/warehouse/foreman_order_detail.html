@@ -1,0 +1,171 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Заявка #{{ order.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Dark Theme override specific for Foreman View */
+    body { background-color: #121212; color: #e0e0e0; }
+    .card { background-color: #1e1e1e; border-color: #333; color: #fff; }
+    
+    /* Override Bootstrap text-muted because it is too dark */
+    .text-muted { color: #a0a0a0 !important; }
+    
+    .form-control, .form-select { background-color: #2c2c2c; border-color: #444; color: #fff; }
+    .form-control:focus { background-color: #333; color: #fff; border-color: #0d6efd; }
+    
+    .chat-container { display: flex; flex-direction: column; }
+    .chat-bubble { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; max-width: 85%; }
+    .chat-bubble.me { background-color: #0d6efd; color: white; margin-left: auto; border-bottom-right-radius: 2px; }
+    .chat-bubble.manager { background-color: #333; color: white; margin-right: auto; border-bottom-left-radius: 2px; border: 1px solid #444; }
+    .chat-time { font-size: 0.7em; opacity: 0.7; display: block; text-align: right; margin-top: 4px; }
+    
+    .item-card {
+        background-color: #252525;
+        border-bottom: 1px solid #333;
+        padding: 12px;
+    }
+    .item-card:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-3 pb-5" style="max-width: 600px;">
+    
+    <!-- HEADER -->
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <a href="{% url 'index' %}" class="text-decoration-none text-secondary small"><i class="bi bi-arrow-left"></i> Назад</a>
+            <h4 class="fw-bold mb-0 mt-1 text-white">Заявка #{{ order.id }}</h4>
+        </div>
+        <div class="text-end">
+            <span class="badge 
+                {% if order.status == 'new' %}bg-primary
+                {% elif order.status == 'in_transit' %}bg-info text-dark
+                {% elif order.status == 'completed' %}bg-success
+                {% elif order.status == 'rejected' %}bg-danger
+                {% else %}bg-secondary{% endif %}">
+                {{ order.get_status_display }}
+            </span>
+        </div>
+    </div>
+
+    <!-- ДЕТАЛІ -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-transparent border-bottom border-secondary py-3">
+             <div class="d-flex align-items-center">
+                <i class="bi bi-geo-alt-fill text-warning me-2"></i>
+                <span class="fw-bold">{{ order.warehouse.name }}</span>
+            </div>
+        </div>
+        
+        <div class="card-body p-0">
+            {% for item in order.items.all %}
+            <div class="item-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold mb-0 text-white">{{ item.material.name }}</h5>
+                        <small class="text-muted">{{ item.material.article }}</small>
+                    </div>
+                    <div class="text-end">
+                        <div class="fs-4 fw-bold text-primary">{{ item.quantity|floatformat:0 }}</div>
+                        <div class="small text-muted">{{ item.material.unit }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            
+            {% if order.note %}
+            <div class="p-3 bg-secondary bg-opacity-10 border-top border-secondary">
+                <small class="text-muted text-uppercase d-block mb-1">Коментар:</small>
+                <i class="bi bi-info-circle me-1 text-info"></i> {{ order.note }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Додаткова інфа про доставку -->
+    {% if order.status == 'in_transit' %}
+    <div class="card bg-dark border-info mb-4 shadow-sm">
+        <div class="card-body">
+            <h6 class="text-info fw-bold mb-3"><i class="bi bi-truck"></i> ВАНТАЖ У ДОРОЗІ</h6>
+            
+            <div class="row g-2 mb-3 small text-white">
+                {% if order.vehicle_number %}
+                <div class="col-6">
+                    <span class="text-secondary d-block">Авто:</span>
+                    <span class="fw-bold fs-6">{{ order.vehicle_number }}</span>
+                </div>
+                {% endif %}
+                {% if order.driver_name %}
+                <div class="col-6">
+                    <span class="text-secondary d-block">Водій:</span>
+                    <span class="fw-bold">{{ order.driver_name }}</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            {% if order.driver_phone %}
+                <a href="tel:{{ order.driver_phone }}" class="btn btn-outline-light w-100 mb-3 btn-sm">
+                    <i class="bi bi-telephone me-2"></i> {{ order.driver_phone }}
+                </a>
+            {% endif %}
+            
+            <a href="{% url 'confirm_receipt' order.id %}" class="btn btn-success w-100 fw-bold py-3 shadow">
+                <i class="bi bi-box-seam me-2"></i> ПРИЙНЯТИ ТОВАР
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Кнопка редагування (якщо нова або чернетка) -->
+    {% if order.status == 'new' or order.status == 'draft' %}
+    <div class="mb-4">
+        <a href="{% url 'foreman_edit_order' order.id %}" class="btn btn-outline-warning w-100">
+            <i class="bi bi-pencil me-2"></i> Редагувати заявку
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- ЧАТ -->
+    <h6 class="text-secondary text-uppercase small fw-bold mb-3 ms-2">Чат з менеджером</h6>
+    
+    <div class="chat-container mb-5" id="chatContainer">
+        {% for comment in comments %}
+            <div class="chat-bubble {% if comment.author == request.user %}me{% else %}manager{% endif %}">
+                <div class="small fw-bold mb-1 opacity-75" style="font-size: 0.75rem;">
+                    {{ comment.author.get_full_name|default:comment.author.username }}
+                </div>
+                {{ comment.text }}
+                <span class="chat-time">{{ comment.created_at|date:"H:i" }}</span>
+            </div>
+        {% empty %}
+            <div class="text-center text-secondary small py-4 opacity-50">
+                <i class="bi bi-chat-dots fs-1 d-block mb-2"></i>
+                Тут можна писати питання
+            </div>
+        {% endfor %}
+    </div>
+
+    <form method="post" class="fixed-bottom p-3 bg-dark border-top border-secondary shadow-lg" style="max-width: 600px; margin: 0 auto;">
+        {% csrf_token %}
+        <div class="input-group">
+            <input type="text" name="comment_text" class="form-control border-secondary bg-black text-white" placeholder="Повідомлення..." required autocomplete="off">
+            <button class="btn btn-primary" type="submit">
+                <i class="bi bi-send-fill"></i>
+            </button>
+        </div>
+    </form>
+
+</div>
+<div style="height: 80px;"></div> <!-- Spacer for footer -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function scrollToBottom() {
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+    scrollToBottom();
+</script>
+{% endblock %}

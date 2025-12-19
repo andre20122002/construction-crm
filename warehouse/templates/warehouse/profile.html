@@ -1,0 +1,156 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Мій Профіль - БудСклад{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5" style="max-width: 800px;">
+    
+    <!-- HEADER -->
+    <div class="d-flex align-items-center mb-5">
+        <div class="position-relative me-4">
+            {% if user.profile.photo %}
+                <img src="{{ user.profile.photo.url }}" class="rounded-circle shadow" style="width: 100px; height: 100px; object-fit: cover;">
+            {% else %}
+                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow" style="width: 100px; height: 100px; font-size: 2.5rem;">
+                    {{ user.username|slice:":1"|upper }}
+                </div>
+            {% endif %}
+            <button class="btn btn-sm btn-light position-absolute bottom-0 end-0 rounded-circle border shadow-sm" data-bs-toggle="modal" data-bs-target="#editProfileModal">
+                <i class="bi bi-pencil"></i>
+            </button>
+        </div>
+        <div>
+            <h2 class="fw-bold mb-0">{{ user.get_full_name|default:user.username }}</h2>
+            <div class="text-muted mb-2">{{ user.profile.position|default:"Співробітник" }}</div>
+            <div>
+                {% if user.is_staff %}
+                    <span class="badge bg-warning text-dark">Менеджер / Адмін</span>
+                {% else %}
+                    <span class="badge bg-secondary">Прораб</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        
+        <!-- МОЇ ОБ'ЄКТИ -->
+        <div class="col-md-7">
+            <h5 class="fw-bold text-muted mb-3">📍 Мої об'єкти</h5>
+            <p class="small text-muted mb-3">Виберіть об'єкт, щоб зробити його активним (зелена галочка).</p>
+            
+            <div class="list-group shadow-sm">
+                {% for wh in assigned_warehouses %}
+                <div class="list-group-item d-flex justify-content-between align-items-center py-3 {% if wh.id == active_wh_id %}bg-light border-primary{% endif %}">
+                    <div>
+                        <div class="fw-bold text-dark">{{ wh.name }}</div>
+                        <small class="text-muted">{{ wh.address }}</small>
+                    </div>
+                    
+                    {% if wh.id == active_wh_id %}
+                        <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i> Активний</span>
+                    {% else %}
+                        <a href="{% url 'switch_active_warehouse' wh.id %}" class="btn btn-sm btn-outline-primary">Перейти</a>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <div class="list-group-item py-4 text-center text-muted">
+                    Вам не призначено жодного складу.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- КОНТАКТИ ТА БЕЗПЕКА -->
+        <div class="col-md-5">
+            <h5 class="fw-bold text-muted mb-3">👤 Особисті дані</h5>
+            
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <small class="text-muted d-block">Телефон</small>
+                        <span class="fs-5">{{ user.profile.phone|default:"-" }}</span>
+                    </div>
+                    <div class="mb-3">
+                        <small class="text-muted d-block">Email</small>
+                        <span>{{ user.email }}</span>
+                    </div>
+                    
+                    <hr>
+                    
+                    <a href="{% url 'password_change' %}" class="btn btn-outline-danger w-100">
+                        <i class="bi bi-shield-lock me-2"></i> Змінити пароль
+                    </a>
+                </div>
+            </div>
+
+            <h5 class="fw-bold text-muted mb-3">📊 Статистика</h5>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="p-3 bg-white rounded shadow-sm text-center border">
+                        <div class="fs-4 fw-bold text-primary">{{ my_orders_count }}</div>
+                        <small class="text-muted">Заявок</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-white rounded shadow-sm text-center border">
+                        <div class="fs-4 fw-bold text-success">{{ my_transactions_count }}</div>
+                        <small class="text-muted">Рухів</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛКА РЕДАГУВАННЯ -->
+    <div class="modal fade" id="editProfileModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Редагувати профіль</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="modal-body">
+                        <h6 class="text-muted mb-3">Основна інформація</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Ім'я</label>
+                            {{ u_form.first_name }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Прізвище</label>
+                            {{ u_form.last_name }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            {{ u_form.email }}
+                        </div>
+                        
+                        <hr>
+                        <h6 class="text-muted mb-3">Додатково</h6>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Телефон</label>
+                            {{ p_form.phone }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Посада</label>
+                            {{ p_form.position }}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Фото</label>
+                            {{ p_form.photo }}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+                        <button type="submit" class="btn btn-primary">Зберегти зміни</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

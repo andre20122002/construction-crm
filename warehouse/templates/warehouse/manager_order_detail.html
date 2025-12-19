@@ -1,0 +1,251 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Заявка #{{ order.id }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid pb-5">
+    
+    <!-- HEADER -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <div class="text-muted small mb-1">
+                <a href="{% url 'manager_dashboard' %}" class="text-decoration-none text-secondary">← Назад до списку</a>
+            </div>
+            <h2 class="fw-bold mb-0">Заявка #{{ order.id }}</h2>
+            <div class="mt-2">
+                <span class="badge bg-light text-dark border">{{ order.get_priority_display }}</span>
+                <span class="badge bg-light text-dark border">{{ order.get_status_display }}</span>
+            </div>
+        </div>
+        <div class="text-end">
+            <!-- КНОПКА ДРУКУ -->
+            <a href="{% url 'print_order_pdf' order.id %}" target="_blank" class="btn btn-outline-dark mb-2">
+                <i class="bi bi-printer-fill me-2"></i> Друк накладної
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- LEFT COL: ITEMS & ACTIONS -->
+        <div class="col-lg-8">
+            
+            <!-- ТАБЛИЦЯ ТОВАРІВ -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>📦 Склад заявки ({{ order.items.count }} поз.)</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-3">Матеріал</th>
+                                <th>Артикул</th>
+                                <th class="text-center">Кількість</th>
+                                <th class="text-center">Ціна (План)</th>
+                                <th class="text-end pe-3">Сума</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in order.items.all %}
+                            <tr>
+                                <td class="ps-3 fw-bold">{{ item.material.name }}</td>
+                                <td class="text-muted small">{{ item.material.article }}</td>
+                                <td class="text-center fs-5">{{ item.quantity|floatformat:2 }} <small class="text-muted fs-6">{{ item.material.unit }}</small></td>
+                                <td class="text-center text-muted">{{ item.material.current_avg_price|floatformat:2 }} ₴</td>
+                                <td class="text-end pe-3 fw-bold">{{ item.total_price|floatformat:2 }} ₴</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="bg-light">
+                            <tr>
+                                <td colspan="4" class="text-end fw-bold">Загальна оціночна вартість:</td>
+                                <td class="text-end pe-3 fw-bold fs-5">{{ order.get_total_cost|default:"0.00" }} ₴</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- УПРАВЛІННЯ (PO / TRANSFER / SPLIT) -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between">
+                    <span>🛒 Управління</span>
+                </div>
+                <div class="card-body">
+                    {% if order.status == 'new' %}
+                        
+                        <!-- ПІДКАЗКА ПРО РОЗДІЛЕННЯ (Якщо немає спільного постачальника) -->
+                        {% if not suggested_suppliers and order.items.count > 1 %}
+                        <div class="alert alert-warning border-warning d-flex align-items-start mb-4">
+                            <i class="bi bi-exclamation-triangle-fill fs-3 me-3 text-warning"></i>
+                            <div>
+                                <strong class="text-dark">Спільного постачальника не знайдено!</strong>
+                                <p class="small mb-2 text-muted">
+                                    Товари в цій заявці належать до різних категорій або постачальників.
+                                    Рекомендуємо розділити заявку.
+                                </p>
+                                <div class="d-flex gap-2">
+                                    <a href="{% url 'split_order' order.id %}" class="btn btn-warning btn-sm fw-bold shadow-sm">
+                                        <i class="bi bi-scissors me-1"></i> Майстер розділення
+                                    </a>
+                                    <form action="{% url 'reject_order' order.id %}" method="post" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            Відхилити
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- КНОПКА РОЗДІЛЕННЯ (ЗАВЖДИ ДОСТУПНА) -->
+                        <div class="mb-4 text-end">
+                            <a href="{% url 'split_order' order.id %}" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-scissors me-1"></i> Розділити на кілька заявок
+                            </a>
+                        </div>
+
+                        <hr>
+
+                        <!-- ФОРМА ЗАКУПІВЛІ -->
+                        <h5 class="fw-bold mb-3">Створення закупівлі (PO)</h5>
+                        <form method="post" action="{% url 'create_po' order.id %}">
+                            {% csrf_token %}
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold small text-muted">Варіант 1: Оберіть зі списку (Авто-ціни)</label>
+                                <select name="supplier_id" class="form-select mb-3 border-success" id="supplierSelect">
+                                    <option value="">-- Не обрано --</option>
+                                    {% for sup in suggested_suppliers %}
+                                        <option value="{{ sup.id }}" class="fw-bold text-success">
+                                            ✅ {{ sup.name }} (Є всі {{ order.items.count }} товарів)
+                                        </option>
+                                    {% endfor %}
+                                    <option disabled>---</option>
+                                    <option value="" class="text-muted">Інші постачальники не покривають весь список</option>
+                                </select>
+                                
+                                <label class="form-label fw-bold small text-muted">Варіант 2: Введіть вручну (Ринок / Епіцентр)</label>
+                                <input type="text" name="manual_supplier" class="form-control" placeholder="Назва постачальника...">
+                                <div class="form-text">Вкажіть назву, якщо купуєте не за прямим договором.</div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-primary fw-bold px-4 shadow-sm">
+                                    <i class="bi bi-check-lg me-2"></i> Затвердити закупівлю
+                                </button>
+                            </div>
+                        </form>
+                    {% else %}
+                        <div class="text-center text-muted py-4 bg-light rounded border">
+                            <i class="bi bi-lock-fill me-1"></i> Заявка вже в роботі ({{ order.get_status_display }}).
+                            <br>
+                            Постачальник: <b>{{ order.supplier_info|default:order.selected_supplier.name|default:"-" }}</b>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COL: INFO, STOCK CHECK & CHAT -->
+        <div class="col-lg-4">
+            
+            <!-- СКЛАДСЬКІ ЗАЛИШКИ (INTERNAL STOCK) -->
+            {% if internal_stock_suggestions %}
+            <div class="card shadow-sm border-info mb-4">
+                <div class="card-header bg-info bg-opacity-10 text-dark fw-bold border-info">
+                    <i class="bi bi-arrow-repeat me-2"></i> Є на залишках!
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for mat_name, suggestions in internal_stock_suggestions.items %}
+                            <div class="list-group-item bg-light">
+                                <small class="fw-bold text-muted d-block mb-1">{{ mat_name }}</small>
+                                {% for s in suggestions %}
+                                    <div class="d-flex justify-content-between align-items-center mt-1 p-1 rounded bg-white border">
+                                        <span class="small">{{ s.wh.name }}</span>
+                                        <span class="badge bg-success">{{ s.qty|floatformat:0 }} од.</span>
+                                    </div>
+                                    <!-- Форма для трансферу (тільки якщо статус new) -->
+                                    {% if order.status == 'new' %}
+                                    <form action="{% url 'transfer_from_stock' order.id %}" method="post" class="mt-1 text-end">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="source_id" value="{{ s.wh.id }}">
+                                        <button type="submit" class="btn btn-sm btn-link text-decoration-none p-0 small">
+                                            Забрати звідси
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="p-2 text-center small text-muted bg-info bg-opacity-10">
+                        Можна зробити переміщення замість покупки.
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- INFO CARD -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white fw-bold">📋 Інфо</div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span class="text-muted">Об'єкт</span>
+                            <span class="fw-bold">{{ order.warehouse.name }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span class="text-muted">Автор</span>
+                            <span>{{ order.created_by.get_full_name }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between px-0">
+                            <span class="text-muted">Дата</span>
+                            <span>{{ order.created_at|date:"d.m.Y" }}</span>
+                        </li>
+                        <li class="list-group-item px-0">
+                            <span class="text-muted d-block mb-1">Коментар:</span>
+                            <div class="bg-light p-2 rounded small">{{ order.note|default:"-" }}</div>
+                        </li>
+                        {% if order.request_photo %}
+                        <li class="list-group-item px-0 text-center pt-3">
+                            <a href="{{ order.request_photo.url }}" target="_blank">
+                                <img src="{{ order.request_photo.url }}" class="img-fluid rounded border" style="max-height: 150px;">
+                            </a>
+                            <div class="small text-muted mt-1">Фото від прораба</div>
+                        </li>
+                        {% endif %}
+                    </ul>
+                    
+                    <!-- CHAT -->
+                    <div class="mt-4 pt-3 border-top">
+                        <h6 class="fw-bold small text-muted text-uppercase mb-3">💬 Чат</h6>
+                        <div class="bg-light p-2 rounded mb-3" style="max-height: 200px; overflow-y: auto;">
+                            {% for comment in comments %}
+                                <div class="mb-2 p-2 rounded bg-white border shadow-sm small">
+                                    <div class="d-flex justify-content-between text-muted mb-1" style="font-size:0.8em">
+                                        <strong>{{ comment.author.get_full_name|default:comment.author.username }}</strong>
+                                        <span>{{ comment.created_at|date:"H:i" }}</span>
+                                    </div>
+                                    {{ comment.text }}
+                                </div>
+                            {% empty %}
+                                <div class="text-center text-muted small">Немає повідомлень</div>
+                            {% endfor %}
+                        </div>
+                        <form method="post">
+                            {% csrf_token %}
+                            <div class="input-group input-group-sm">
+                                <input type="text" name="comment_text" class="form-control" placeholder="Написати..." required>
+                                <button class="btn btn-outline-primary" type="submit"><i class="bi bi-send"></i></button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

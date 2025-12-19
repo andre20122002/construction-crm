@@ -1,0 +1,98 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}Журнал переміщень{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4 fw-bold"><i class="bi bi-arrow-left-right me-2"></i> Журнал переміщень</h3>
+
+    <!-- ФІЛЬТРИ -->
+    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Період з</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ f_date_from|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">по</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ f_date_to|default:'' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="small fw-bold text-muted">Статус</label>
+                    <select name="status" class="form-select">
+                        <option value="">Всі статуси</option>
+                        <option value="new" {% if f_status == 'new' %}selected{% endif %}>На відправці</option>
+                        <option value="in_transit" {% if f_status == 'in_transit' %}selected{% endif %}>У дорозі</option>
+                        <option value="completed" {% if f_status == 'completed' %}selected{% endif %}>Доставлено</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-filter"></i></button>
+                    <button type="submit" name="export" value="excel" class="btn btn-success w-100"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+                    <a href="{% url 'transfer_journal' %}" class="btn btn-outline-secondary"><i class="bi bi-x-lg"></i></a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ТАБЛИЦЯ -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-nowrap">
+                <thead class="bg-primary text-white">
+                    <tr>
+                        <th>Дата</th>
+                        <th>Матеріал</th>
+                        <th class="text-center">Кількість</th>
+                        <th>Звідки (Відправник)</th>
+                        <th>Куди (Одержувач)</th>
+                        <th>Ініціатор</th>
+                        <th>Статус</th>
+                        <th>Дії</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in journal %}
+                    <tr>
+                        <td>{{ row.date|date:"d.m.Y" }}</td>
+                        <td class="fw-bold">{{ row.material }}</td>
+                        <td class="text-center">
+                            <span class="fs-5 fw-bold">{{ row.quantity }}</span> <small class="text-muted">{{ row.unit }}</small>
+                        </td>
+                        <td>
+                            <i class="bi bi-building-up text-secondary me-1"></i> {{ row.source }}
+                        </td>
+                        <td>
+                            <i class="bi bi-geo-alt-fill text-danger me-1"></i> {{ row.destination }}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="avatar-xs bg-light rounded-circle text-center border me-2" style="width:25px;">
+                                    <small>{{ row.initiator|slice:":1" }}</small>
+                                </div>
+                                {{ row.initiator }}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ row.status_class }} border">{{ row.status_label }}</span>
+                        </td>
+                        <td>
+                            <a href="{% url 'print_order_pdf' row.id %}" target="_blank" class="btn btn-sm btn-outline-dark" title="ТТН">
+                                <i class="bi bi-file-earmark-text"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            Переміщень за цей період не знайдено.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
