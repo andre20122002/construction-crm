@@ -1,371 +1,358 @@
+import uuid
+from decimal import Decimal, ROUND_HALF_UP
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
+from django.core.validators import MinValueValidator
+from django.utils import timezone
+from django.db.models import Sum, F, DecimalField, ExpressionWrapper, Q
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from django.db.models import Sum, F
-from django.utils import timezone
-from django.core.exceptions import ValidationError
-from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.core.validators import MinValueValidator
-from decimal import Decimal
+from django.contrib.contenttypes.fields import GenericForeignKey
 
-# --- 1. ДОВІДНИКИ ---
-
-class Category(models.Model):
-    name = models.CharField(max_length=100, verbose_name="Назва категорії")
-    
-    def __str__(self):
-        return self.name
-    
-    class Meta:
-        verbose_name = "Категорія"
-        verbose_name_plural = "Категорії матеріалів"
-
-class Supplier(models.Model):
-    name = models.CharField(max_length=200, verbose_name="Компанія")
-    contact_person = models.CharField(max_length=100, blank=True, verbose_name="Контактна особа")
-    phone = models.CharField(max_length=50, blank=True, verbose_name="Телефон")
-    email = models.EmailField(blank=True)
-    materials = models.ManyToManyField('Material', blank=True, related_name='suppliers', verbose_name="Постачає матеріали")
-    rating = models.IntegerField(default=5, verbose_name="Рейтинг (1-5)")
-
-    def __str__(self):
-        return self.name
-
-class Material(models.Model):
-    UNIT_CHOICES = [
-        ('шт', 'Штука'), ('кг', 'Кілограм'), ('т', 'Тонна'),
-        ('м3', 'Метр кубічний'), ('м2', 'Метр квадратний'),
-        ('м', 'Метр'), ('мп', 'Метр погонний'), ('л', 'Літр'),
-        ('пак', 'Пакунок'), ('рул', 'Рулон'),
-    ]
-    
-    # НОВЕ ПОЛЕ: Категорія
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Категорія")
-    
-    name = models.CharField(max_length=200, verbose_name="Назва матеріалу")
-    article = models.CharField(max_length=50, unique=True, verbose_name="Артикул")
-    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, verbose_name="Од. виміру")
-    barcode = models.CharField(max_length=100, blank=True, null=True, verbose_name="Штрихкод / QR")
-    
-    min_limit = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00, verbose_name="Мін. ліміт",
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
-    current_avg_price = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00, verbose_name="Сер. собівартість",
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
-    market_price = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0.00, verbose_name="Поточна ринкова ціна",
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
-
-    def __str__(self):
-        return f"{self.name} ({self.article})"
-
-    class Meta:
-        verbose_name = "Матеріал"
-        verbose_name_plural = "Матеріали (Довідник)"
-
-class SupplierPrice(models.Model):
-    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='prices')
-    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='supplier_prices')
-    price = models.DecimalField(
-        max_digits=10, decimal_places=2, verbose_name="Договірна ціна",
-        validators=[MinValueValidator(Decimal('0.01'))] 
-    )
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата оновлення")
-
-    class Meta:
-        unique_together = ('supplier', 'material')
-        verbose_name = "Договірна ціна"
-        verbose_name_plural = "Прайс-лист постачальників"
-
-    def __str__(self):
-        return f"{self.supplier.name} - {self.material.name}: {self.price} грн"
 
 class Warehouse(models.Model):
-    name = models.CharField(max_length=200, verbose_name="Назва складу / Об'єкту")
-    address = models.CharField(max_length=300, blank=True, verbose_name="Адреса")
-    is_main_storage = models.BooleanField(default=False, verbose_name="Це центральний склад?")
+    name = models.CharField("Назва складу / Об'єкту", max_length=100)
+    address = models.CharField("Адреса", max_length=255, blank=True)
+    
+    # DECIMAL UPDATE: Гроші (2 знаки)
     budget_limit = models.DecimalField(
-        max_digits=12, decimal_places=2, default=100000.00, verbose_name="Бюджет проекту",
-        validators=[MinValueValidator(Decimal('0.00'))]
+        "Бюджетний ліміт (грн)", 
+        max_digits=14, 
+        decimal_places=2, 
+        default=Decimal("0.00")
     )
     
-    responsible = models.ForeignKey(
-       User, on_delete=models.SET_NULL, null=True, blank=True, 
-       verbose_name="Матеріально відповідальний (МВО)", related_name='responsible_warehouses'
+    responsible_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='managed_warehouses', 
+        verbose_name='Відповідальний'
     )
-    assigned_users = models.ManyToManyField(
-        User, related_name='assigned_warehouses', blank=True, verbose_name="Інші користувачі з доступом"
-    )
-
-    def __str__(self):
-        return self.name
 
     class Meta:
         verbose_name = "Склад / Об'єкт"
-        verbose_name_plural = "Склади"
-
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    phone = models.CharField(max_length=20, blank=True, verbose_name="Телефон")
-    photo = models.ImageField(upload_to='avatars/', null=True, blank=True, verbose_name="Фото профілю")
-    position = models.CharField(max_length=100, blank=True, default="Співробітник", verbose_name="Посада")
+        verbose_name_plural = "Склади та Об'єкти"
 
     def __str__(self):
-        return f"Профіль {self.user.username}"
+        return self.name
 
 
-# --- 2. ЗАЯВКИ (ПЛАН) ---
+class Category(models.Model):
+    name = models.CharField("Назва категорії", max_length=100)
+
+    class Meta:
+        verbose_name = "Категорія"
+        verbose_name_plural = "Категорії"
+
+    def __str__(self):
+        return self.name
+
+
+class Supplier(models.Model):
+    name = models.CharField("Назва постачальника", max_length=100)
+    contact_person = models.CharField("Контактна особа", max_length=100, blank=True)
+    phone = models.CharField("Телефон", max_length=20, blank=True)
+    email = models.EmailField("Email", blank=True)
+    address = models.TextField("Адреса", blank=True)
+    rating = models.IntegerField("Рейтинг надійності (0-100)", default=100, validators=[MinValueValidator(0)])
+
+    class Meta:
+        verbose_name = "Постачальник"
+        verbose_name_plural = "Постачальники"
+
+    def __str__(self):
+        return self.name
+
+
+class Material(models.Model):
+    name = models.CharField("Назва матеріалу", max_length=200)
+    article = models.CharField("Артикул / Код", max_length=50, unique=True, blank=True, null=True)
+    characteristics = models.TextField("Характеристики", blank=True)
+    unit = models.CharField("Од. виміру", max_length=20, default='шт')
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Категорія")
+    
+    # DECIMAL UPDATE: Ціна (2 знаки), Кількість (3 знаки)
+    current_avg_price = models.DecimalField(
+        "Середня ціна", 
+        max_digits=14, 
+        decimal_places=2, 
+        default=Decimal("0.00")
+    )
+    min_limit = models.DecimalField(
+        "Мін. залишок (ліміт)", 
+        max_digits=14, 
+        decimal_places=3, 
+        default=Decimal("0.000")
+    )
+
+    class Meta:
+        verbose_name = "Матеріал"
+        verbose_name_plural = "Матеріали"
+
+    def __str__(self):
+        return f"{self.name} ({self.unit})"
+
+    def update_material_avg_price(self):
+        """
+        Перераховує середньозважену ціну на основі всіх приходів (IN).
+        Використовує тільки Decimal для точності.
+        """
+        # Беремо всі приходи (IN)
+        in_txs = self.transactions.filter(transaction_type='IN')
+        
+        # Агрегуємо: sum(qty * price), sum(qty)
+        # Використовуємо output_field=DecimalField, щоб БД не повертала float
+        aggregates = in_txs.aggregate(
+            total_value=Sum(F('quantity') * F('price'), output_field=DecimalField(max_digits=20, decimal_places=2)),
+            total_qty=Sum('quantity', output_field=DecimalField(max_digits=20, decimal_places=3))
+        )
+        
+        total_val = aggregates['total_value'] or Decimal("0.00")
+        total_qty = aggregates['total_qty'] or Decimal("0.000")
+        
+        if total_qty > 0:
+            self.current_avg_price = (total_val / total_qty).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        else:
+            # Якщо немає приходів, ціна не змінюється
+            pass 
+            
+        self.save(update_fields=['current_avg_price'])
+
+
+class ConstructionStage(models.Model):
+    name = models.CharField("Етап будівництва", max_length=100)
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='stages', verbose_name="Об'єкт")
+    start_date = models.DateField("Початок", null=True, blank=True)
+    end_date = models.DateField("Кінець", null=True, blank=True)
+    completed = models.BooleanField("Завершено", default=False)
+
+    class Meta:
+        verbose_name = "Етап будівництва"
+        verbose_name_plural = "Етапи будівництва"
+
+    def __str__(self):
+        return f"{self.name} ({self.warehouse.name})"
+
+
+class StageLimit(models.Model):
+    """
+    Ліміти матеріалів на етап (Кошторис).
+    """
+    stage = models.ForeignKey(ConstructionStage, on_delete=models.CASCADE, related_name='limits')
+    material = models.ForeignKey(Material, on_delete=models.CASCADE)
+    
+    # DECIMAL UPDATE: Кількість (3 знаки)
+    planned_quantity = models.DecimalField(
+        "План. кількість", 
+        max_digits=14, 
+        decimal_places=3, 
+        default=Decimal("0.000")
+    )
+
+    class Meta:
+        verbose_name = "Ліміт матеріалу"
+        verbose_name_plural = "Ліміти матеріалів (Кошторис)"
+
 
 class Order(models.Model):
     STATUS_CHOICES = [
-        ('draft', '📝 Чернетка'),
-        ('new', '⏳ На погодженні'),
-        ('rfq', '🔍 Тендер (RFQ)'),
-        ('approved', '✅ Погоджено (PO)'),
-        ('purchasing', '💸 У закупівлі'),
-        ('in_transit', '🚚 У дорозі'),
-        ('completed', '🏁 Виконано'),
-        ('rejected', '🚫 Відхилено'),
+        ('new', 'Нова'),
+        ('rfq', 'Запит ціни (RFQ)'),
+        ('approved', 'Погоджено'),
+        ('purchasing', 'У закупівлі'),
+        ('transit', 'В дорозі'),
+        ('completed', 'Виконано / На складі'),
+        ('rejected', 'Відхилено'),
     ]
-    
     PRIORITY_CHOICES = [
-        ('low', '🟢 Не терміново'),
-        ('normal', '🟡 Звичайно'),
-        ('high', '🔴 Терміново!'),
+        ('low', 'Низький'),
+        ('medium', 'Середній'),
+        ('high', 'Високий'),
+        ('critical', 'Критичний 🔥'),
     ]
 
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата створення")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Оновлено")
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, verbose_name="Куди (Склад)")
+    status = models.CharField("Статус", max_length=20, choices=STATUS_CHOICES, default='new')
+    priority = models.CharField("Пріоритет", max_length=20, choices=PRIORITY_CHOICES, default='medium')
     
-    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, verbose_name="Куди (Об'єкт)", related_name='destination_orders')
-    source_warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Звідки (Джерело)", related_name='source_orders')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="Автор")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expected_date = models.DateField("Очікувана дата", null=True, blank=True)
     
-    # Видаляємо пряме посилання на material та quantity, оскільки це тепер в OrderItem
-    # material = models.ForeignKey(Material, on_delete=models.CASCADE, verbose_name="Що треба") 
-    # quantity = models.DecimalField(...)
+    note = models.TextField("Примітка", blank=True)
+    request_photo = models.ImageField(upload_to='orders/requests/', null=True, blank=True, verbose_name="Фото заявки")
     
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new', verbose_name="Статус")
-    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='normal', verbose_name="Пріоритет")
+    # Для логістики (якщо це переміщення з іншого складу)
+    source_warehouse = models.ForeignKey(Warehouse, on_delete=models.SET_NULL, null=True, blank=True, related_name='outgoing_orders', verbose_name="Звідки (якщо переміщення)")
     
-    created_by = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Автор", related_name='created_orders', null=True, blank=True)
-    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, verbose_name="Хто погодив", related_name='approved_orders', null=True, blank=True)
-    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата погодження")
-    
-    audit_log = models.TextField(blank=True, default="", verbose_name="Історія змін (Log)")
-
-    expected_date = models.DateField(null=True, blank=True, verbose_name="На коли треба?")
-    note = models.TextField(blank=True, verbose_name="Причина / Коментар")
-    
-    request_photo = models.ImageField(upload_to='requests/', null=True, blank=True, verbose_name="Фото до заявки")
-    proof_photo = models.ImageField(upload_to='proofs/', null=True, blank=True, verbose_name="Фото факту")
-    
-    selected_supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Обраний постачальник")
-    
-    supplier_price = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Ціна закупівлі",
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
-    supplier_info = models.CharField(max_length=200, blank=True, verbose_name="Постачальник (Текст)")
-
-    manager_last_viewed_at = models.DateTimeField(null=True, blank=True, verbose_name="Менеджер бачив")
-
-    driver_name = models.CharField(max_length=100, blank=True, verbose_name="Водій ПІБ")
-    driver_phone = models.CharField(max_length=50, blank=True, verbose_name="Телефон водія")
-    vehicle_number = models.CharField(max_length=20, blank=True, verbose_name="Номер авто")
-    shipping_doc = models.ImageField(upload_to='shipping_docs/', null=True, blank=True, verbose_name="Скан ТТН (Відправка)")
-
-    def log_change(self, user, message):
-        timestamp = timezone.now().strftime("%d.%m.%Y %H:%M")
-        user_name = user.get_full_name() or user.username
-        entry = f"[{timestamp}] {user_name}: {message}\n"
-        self.audit_log = entry + self.audit_log
-        self.save(update_fields=['audit_log', 'updated_at'])
-        
-    def get_total_cost(self):
-        """Рахує загальну вартість замовлення на основі товарів"""
-        return sum(item.total_price() for item in self.items.all())
+    # Підтвердження отримання
+    proof_photo = models.ImageField(upload_to='orders/proofs/', null=True, blank=True, verbose_name="Фото ТТН/Факт")
 
     class Meta:
         verbose_name = "Заявка"
         verbose_name_plural = "Заявки"
         ordering = ['-created_at']
 
+    def __str__(self):
+        return f"Order #{self.id} ({self.get_status_display()})"
+
+
 class OrderItem(models.Model):
-    order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     material = models.ForeignKey(Material, on_delete=models.CASCADE)
     
-    quantity = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
-    quantity_fact = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    supplier_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # DECIMAL UPDATE: Кількість (3 знаки)
+    quantity = models.DecimalField(
+        "Кількість (План)", 
+        max_digits=14, 
+        decimal_places=3, 
+        default=Decimal("0.000")
+    )
+    quantity_fact = models.DecimalField(
+        "Кількість (Факт)", 
+        max_digits=14, 
+        decimal_places=3, 
+        default=Decimal("0.000"), 
+        blank=True
+    )
     
-    def total_price(self):
-        """Сума рядка: Ціна * Кількість"""
-        price = self.supplier_price or self.material.current_avg_price
-        qty = self.quantity_fact or self.quantity
-        return round(qty * price, 2)
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Постачальник")
+    
+    # DECIMAL UPDATE: Ціна (2 знаки)
+    supplier_price = models.DecimalField(
+        "Ціна закупки", 
+        max_digits=14, 
+        decimal_places=2, 
+        null=True, 
+        blank=True
+    )
 
     def __str__(self):
         return f"{self.material.name} - {self.quantity}"
 
+
 class OrderComment(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='comments')
-    author = models.ForeignKey(User, on_delete=models.CASCADE)
-    text = models.TextField(verbose_name="Повідомлення")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    text = models.TextField("Коментар")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.author}: {self.text[:20]}"
-    
     class Meta:
         ordering = ['created_at']
 
 
-# --- 3. РУХ ТОВАРІВ (ФАКТ) ---
-
 class Transaction(models.Model):
     TYPE_CHOICES = [
-        ('IN', 'Прихід (Закупівля)'),
-        ('OUT', 'Витрата (Робота)'),
-        ('TRANSFER', 'Переміщення'),
-        ('LOSS', '⚠️ Списання (Бій / Псування)'),
-    ]
-    
-    WORK_TYPES = [
-        ('foundation', 'Фундамент'),
-        ('walls', 'Стіни / Кладка'),
-        ('roof', 'Покрівля / Дах'),
-        ('facade', 'Фасад'),
-        ('interior', 'Внутрішнє оздоблення'),
-        ('plumbing', 'Сантехніка'),
-        ('electric', 'Електрика'),
-        ('other', 'Інше'),
-    ]
-    
-    SHIFT_CHOICES = [
-        ('1', '1-ша зміна'),
-        ('2', '2-га зміна'),
-        ('3', 'Нічна'),
+        ('IN', 'Прихід'),
+        ('OUT', 'Списання'),
+        ('LOSS', 'Втрати / Бій'),
+        # 'TRANSFER' використовується тільки для відображення груп транзакцій, 
+        # у базі зберігаються як OUT + IN з transfer_group_id
     ]
 
-    transaction_type = models.CharField(max_length=10, choices=TYPE_CHOICES, verbose_name="Тип")
-    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, verbose_name="Склад")
-    material = models.ForeignKey(Material, on_delete=models.CASCADE, verbose_name="Матеріал")
+    transaction_type = models.CharField("Тип", max_length=10, choices=TYPE_CHOICES)
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE, related_name='transactions')
+    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='transactions')
     
-    quantity = models.DecimalField(
-        max_digits=10, decimal_places=2, verbose_name="Кількість",
-        validators=[MinValueValidator(Decimal('0.01'))]
-    )
+    # DECIMAL UPDATE: Кількість (3 знаки), Ціна (2 знаки)
+    quantity = models.DecimalField("Кількість", max_digits=14, decimal_places=3)
+    price = models.DecimalField("Ціна (на момент)", max_digits=14, decimal_places=2, default=Decimal("0.00"))
     
-    price = models.DecimalField(
-        max_digits=10, decimal_places=2, default=0, verbose_name="Ціна (за од.)",
-        validators=[MinValueValidator(Decimal('0.00'))]
-    )
+    date = models.DateField("Дата операції", default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     
-    description = models.TextField(blank=True, verbose_name="Коментар")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата запису")
+    description = models.CharField("Коментар", max_length=255, blank=True)
     
-    date = models.DateField(default=timezone.now, verbose_name="Дата виконання")
-    work_type = models.CharField(max_length=50, choices=WORK_TYPES, blank=True, verbose_name="Вид робіт")
-    shift = models.CharField(max_length=10, choices=SHIFT_CHOICES, default='1', verbose_name="Зміна")
-
-    photo = models.ImageField(upload_to='transactions/', null=True, blank=True, verbose_name="Фото-звіт")
-    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Пов'язана заявка")
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Виконавець")
-
-    def __str__(self):
-        return f"{self.get_transaction_type_display()} - {self.material.name}"
+    # Зв'язки
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    stage = models.ForeignKey(ConstructionStage, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Етап робіт")
+    
+    # Для переміщень (групує OUT та IN)
+    transfer_group_id = models.UUIDField(null=True, blank=True, db_index=True)
+    
+    photo = models.ImageField(upload_to='transactions/', null=True, blank=True, verbose_name="Фото підтвердження")
 
     class Meta:
         verbose_name = "Транзакція"
-        verbose_name_plural = "Журнал руху"
+        verbose_name_plural = "Транзакції"
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['warehouse', 'material']),
+            models.Index(fields=['date']),
+        ]
 
-    def clean(self):
-        if self.quantity <= 0:
-            raise ValidationError({'quantity': "Кількість має бути строго більше нуля!"})
-        if self.transaction_type == 'IN' and self.price <= 0:
-            is_internal_transfer = self.order and self.order.source_warehouse
-            if not is_internal_transfer:
-                raise ValidationError({'price': "Ціна закупівлі не може бути 0.00! Це ламає облік собівартості."})
-
-    def save(self, *args, **kwargs):
-        if self.pk:
-            raise ValidationError("⛔ Змінювати проведені транзакції заборонено! Видаліть запис і створіть новий, якщо допущено помилку.")
-        self.full_clean()
-        super().save(*args, **kwargs)
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} - {self.material.name} ({self.quantity})"
 
 
-# === 4. АУДИТ ===
+class SupplierPrice(models.Model):
+    supplier = models.ForeignKey(Supplier, on_delete=models.CASCADE, related_name='prices')
+    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='supplier_prices')
+    
+    # DECIMAL UPDATE: Ціна (2 знаки)
+    price = models.DecimalField("Ціна (грн)", max_digits=14, decimal_places=2)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('supplier', 'material')
+
+
+# --- AUDIT LOG ---
 
 class AuditLog(models.Model):
     ACTION_TYPES = [
         ('LOGIN', 'Вхід в систему'),
+        ('LOGOUT', 'Вихід'),
         ('CREATE', 'Створення'),
         ('UPDATE', 'Зміна'),
         ('DELETE', 'Видалення'),
-        ('APPROVE', 'Погодження'),
-        ('REJECT', 'Відхилення'),
-        ('CHANGE_PRICE', 'Зміна ціни'),
-        ('WRITEOFF', 'Списання'),
-        ('TRANSFER', 'Переміщення'),
+        ('ORDER_STATUS', 'Зміна статусу заявки'),
+        ('ORDER_RECEIVED', 'Прийом заявки'),
     ]
-
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="Користувач")
-    action_type = models.CharField(max_length=20, choices=ACTION_TYPES, verbose_name="Дія")
     
-    content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True)
-    object_id = models.PositiveIntegerField(null=True)
-    affected_object = GenericForeignKey('content_type', 'object_id')
-
-    old_value = models.TextField(blank=True, null=True, verbose_name="Було")
-    new_value = models.TextField(blank=True, null=True, verbose_name="Стало")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    action_type = models.CharField(max_length=20, choices=ACTION_TYPES)
     
-    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP")
-    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Час")
+    content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True, blank=True)
+    object_id = models.PositiveIntegerField(null=True, blank=True)
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
+    old_value = models.TextField(null=True, blank=True)
+    new_value = models.TextField(null=True, blank=True)
+    
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "Запис аудиту"
-        verbose_name_plural = "Журнал аудиту (Audit Log)"
+        verbose_name = 'Запис аудиту'
+        verbose_name_plural = 'Журнал аудиту (Audit Log)'
         ordering = ['-timestamp']
 
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
+    phone = models.CharField(max_length=20, blank=True)
+    photo = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    position = models.CharField("Посада", max_length=100, blank=True)
+    warehouses = models.ManyToManyField(Warehouse, blank=True, verbose_name='Доступні склади')
+
     def __str__(self):
-        return f"[{self.timestamp}] {self.user}: {self.action_type}"
+        return self.user.username
 
 
-# --- СИГНАЛИ ---
+# --- SIGNALS ---
 
-@receiver(post_save, sender=Transaction)
-@receiver(post_delete, sender=Transaction)
-def update_material_avg_price(sender, instance, **kwargs):
-    material = instance.material
-    if instance.transaction_type == 'IN' and instance.price > 0:
-        material.market_price = instance.price
-
-    purchases = Transaction.objects.filter(material=material, transaction_type='IN', price__gt=0)
-    
-    if not purchases.exists():
-        material.current_avg_price = 0
-    else:
-        total_data = purchases.aggregate(
-            total_spent=Sum(F('quantity') * F('price')),
-            total_qty=Sum('quantity')
-        )
-        if total_data['total_qty']:
-            material.current_avg_price = total_data['total_spent'] / total_data['total_qty']
-        else:
-            material.current_avg_price = 0
-    material.save()
-
-@receiver(post_save, sender=User)
-def create_or_update_user_profile(sender, instance, created, **kwargs):
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
-    else:
-        if not hasattr(instance, 'profile'):
-            UserProfile.objects.create(user=instance)
-    instance.profile.save()
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def save_user_profile(sender, instance, **kwargs):
+    if hasattr(instance, 'profile'):
+        instance.profile.save()

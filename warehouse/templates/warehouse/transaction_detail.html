@@ -3,7 +3,7 @@
 {% block title %}Транзакція #{{ trans.id }}{% endblock %}
 
 {% block content %}
-<div class="container mt-4" style="max-width: 700px;">
+<div class="container mt-4" style="max-width: 800px;">
     
     <div class="mb-4">
         <a href="javascript:history.back()" class="text-decoration-none text-secondary">
@@ -15,88 +15,136 @@
         <div class="card-header bg-white border-bottom-0 pt-4 pb-0 d-flex justify-content-between align-items-start">
             <div>
                 <h5 class="text-muted text-uppercase small mb-1">Транзакція #{{ trans.id }}</h5>
-                <h2 class="fw-bold mb-0">{{ trans.material.name }}</h2>
+                <!-- Назва матеріалу -->
+                <h2 class="fw-bold mb-0 text-dark">{{ trans.material.name }}</h2>
             </div>
             
-            {% if trans.transaction_type == 'IN' %}
-                <span class="badge bg-success fs-6">Прихід</span>
-            {% elif trans.transaction_type == 'OUT' %}
-                <span class="badge bg-danger fs-6">Списання</span>
-            {% elif trans.transaction_type == 'TRANSFER' %}
-                <span class="badge bg-info text-dark fs-6">Переміщення</span>
+            <!-- Бейджі статусу -->
+            {% if is_transfer %}
+                {% if trans.transaction_type == 'IN' %}
+                    <span class="badge bg-info text-dark fs-6 border border-info">Переміщення (вхід)</span>
+                {% elif trans.transaction_type == 'OUT' %}
+                    <span class="badge bg-info text-dark fs-6 border border-info">Переміщення (вихід)</span>
+                {% else %}
+                    <span class="badge bg-info text-dark fs-6 border border-info">Переміщення</span>
+                {% endif %}
+            {% else %}
+                {% if trans.transaction_type == 'IN' %}
+                    <span class="badge bg-success fs-6">Прихід</span>
+                {% elif trans.transaction_type == 'OUT' %}
+                    <span class="badge bg-warning text-dark fs-6">Витрата</span>
+                {% elif trans.transaction_type == 'LOSS' %}
+                    <span class="badge bg-danger fs-6">Втрата</span>
+                {% endif %}
             {% endif %}
         </div>
 
         <div class="card-body p-4">
             
-            <!-- Основні цифри -->
-            <div class="row g-3 mb-4 text-center">
-                <div class="col-4">
-                    <div class="p-3 bg-light rounded-3">
-                        <div class="text-muted small">Кількість</div>
-                        <div class="fs-4 fw-bold text-dark">{{ trans.quantity }} <small class="fs-6">{{ trans.material.unit }}</small></div>
+            <!-- Основна інфо: Кількість та Сума -->
+            <div class="row mb-4 bg-light rounded p-3 mx-0">
+                <div class="col-md-6 border-end">
+                    <div class="text-muted small text-uppercase mb-1">Кількість</div>
+                    <div class="fs-4 fw-bold {% if trans.transaction_type == 'IN' %}text-success{% else %}text-danger{% endif %}">
+                        {% if trans.transaction_type == 'IN' %}+{% else %}-{% endif %}{{ trans.quantity }} 
+                        <span class="fs-6 text-muted">{{ trans.material.unit }}</span>
                     </div>
                 </div>
-                <div class="col-4">
-                    <div class="p-3 bg-light rounded-3">
-                        <div class="text-muted small">Ціна</div>
-                        <div class="fs-4 fw-bold text-dark">{{ trans.price }} <small class="fs-6">₴</small></div>
-                    </div>
-                </div>
-                <div class="col-4">
-                    <div class="p-3 bg-light rounded-3 border border-success bg-opacity-10">
-                        <div class="text-muted small">Сума</div>
-                        <div class="fs-4 fw-bold text-success">{{ total_sum }} <small class="fs-6">₴</small></div>
+                <div class="col-md-6 ps-md-4 mt-3 mt-md-0">
+                    <div class="text-muted small text-uppercase mb-1">Фінанси</div>
+                    <div class="d-flex justify-content-between align-items-end">
+                        <div>
+                            {% if total_sum > 0 %}
+                                <span class="fs-5 fw-bold">{{ total_sum|floatformat:2 }} ₴</span>
+                            {% else %}
+                                <span class="fs-5 fw-bold text-muted">-</span>
+                            {% endif %}
+                            <div class="small text-muted">Загальна вартість</div>
+                        </div>
+                        <div class="text-end">
+                            {% if trans.price > 0 %}
+                                <span class="fw-bold">{{ trans.price|floatformat:2 }} ₴</span>
+                            {% else %}
+                                <span class="fw-bold text-muted">-</span>
+                            {% endif %}
+                            <div class="small text-muted">Ціна за од.</div>
+                        </div>
                     </div>
                 </div>
             </div>
 
+            <!-- Деталі списком -->
             <ul class="list-group list-group-flush mb-4">
-                <li class="list-group-item d-flex justify-content-between py-3">
-                    <span class="text-muted"><i class="bi bi-calendar3 me-2"></i>Дата та час</span>
-                    <span class="fw-bold">{{ trans.created_at|date:"d.m.Y H:i" }}</span>
+                <li class="list-group-item d-flex justify-content-between px-0 py-3">
+                    <span class="text-muted"><i class="bi bi-geo-alt me-2"></i>Склад / Об'єкт</span>
+                    <span class="fw-bold text-end">{{ trans.warehouse.name }}</span>
                 </li>
-                <li class="list-group-item d-flex justify-content-between py-3">
-                    <span class="text-muted"><i class="bi bi-geo-alt-fill me-2"></i>Склад / Об'єкт</span>
-                    <span class="fw-bold">{{ trans.warehouse.name }}</span>
+                <li class="list-group-item d-flex justify-content-between px-0 py-3">
+                    <span class="text-muted"><i class="bi bi-calendar3 me-2"></i>Дата операції</span>
+                    <span class="fw-bold">{{ trans.date|date:"d.m.Y" }}</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between px-0 py-3">
+                    <span class="text-muted"><i class="bi bi-person me-2"></i>Відповідальний</span>
+                    <span>{{ trans.created_by.get_full_name|default:trans.created_by.username }}</span>
                 </li>
                 
-                <!-- ДОДАНО: ВИКОНАВЕЦЬ -->
-                <li class="list-group-item d-flex justify-content-between py-3">
-                    <span class="text-muted"><i class="bi bi-person-circle me-2"></i>Виконавець</span>
-                    <span class="fw-bold">
-                        {% if trans.created_by %}
-                            {{ trans.created_by.get_full_name|default:trans.created_by.username }}
-                        {% elif trans.order and trans.order.created_by %}
-                            {{ trans.order.created_by.get_full_name|default:trans.order.created_by.username }}
-                        {% else %}
-                            -
-                        {% endif %}
-                    </span>
+                {% if trans.order %}
+                <li class="list-group-item d-flex justify-content-between px-0 py-3">
+                    <span class="text-muted"><i class="bi bi-file-earmark-text me-2"></i>Заявка</span>
+                    {% if user.is_staff %}
+                        <a href="{% url 'manager_order_detail' trans.order.id %}" class="text-decoration-none fw-bold">
+                            #{{ trans.order.id }}
+                        </a>
+                    {% else %}
+                        <span class="fw-bold text-dark">#{{ trans.order.id }}</span>
+                    {% endif %}
                 </li>
+                {% endif %}
 
-                <li class="list-group-item d-flex justify-content-between py-3">
-                    <span class="text-muted"><i class="bi bi-chat-left-text me-2"></i>Коментар</span>
-                    <span class="text-end" style="max-width: 60%;">{{ trans.description|default:"-" }}</span>
+                {% if is_transfer and trans.transfer_group_id %}
+                <li class="list-group-item d-flex justify-content-between px-0 py-3">
+                    <span class="text-muted"><i class="bi bi-link-45deg me-2"></i>ID Групи переміщення</span>
+                    <span class="font-monospace small">{{ trans.transfer_group_id }}</span>
                 </li>
+                {% endif %}
             </ul>
 
-            <!-- ФОТО ФАКТ -->
-            {% if trans.photo %}
-            <div class="card mb-4 border-secondary">
-                <div class="card-header bg-secondary text-white">
-                    <i class="bi bi-camera-fill me-2"></i> Фото-звіт робіт/втрат
-                </div>
-                <div class="card-body text-center bg-light">
-                    <a href="{{ trans.photo.url }}" target="_blank">
-                        <img src="{{ trans.photo.url }}" class="img-fluid rounded shadow-sm" style="max-height: 400px;">
-                    </a>
+            <!-- Опис / Коментар -->
+            <div class="mb-4">
+                <label class="small text-muted fw-bold text-uppercase mb-2">Коментар / Призначення</label>
+                <div class="p-3 bg-light border rounded text-secondary">
+                    {% if trans.description %}
+                        {{ trans.description }}
+                    {% else %}
+                        <em class="text-muted">Опис відсутній</em>
+                    {% endif %}
                 </div>
             </div>
-            {% elif trans.order and trans.order.proof_photo %}
+
+            <!-- Фото (якщо є) -->
+            {% if trans.photo %}
+            <div class="card mb-3">
+                <div class="card-header bg-white fw-bold small text-uppercase">
+                    <i class="bi bi-camera me-2"></i>Фото-підтвердження
+                </div>
+                <div class="card-body p-2 text-center bg-light">
+                    <a href="{{ trans.photo.url }}" target="_blank">
+                        <img src="{{ trans.photo.url }}" class="img-fluid rounded shadow-sm" style="max-height: 500px;" alt="Фото транзакції">
+                    </a>
+                    <div class="mt-2">
+                        <a href="{{ trans.photo.url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-arrows-fullscreen me-1"></i> Відкрити оригінал
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Якщо це прихід по заявці з фото (для замовлень) -->
+            {% if trans.order and trans.order.proof_photo %}
             <div class="card mb-4 border-success">
                 <div class="card-header bg-success text-white">
-                    <i class="bi bi-camera-fill me-2"></i> Фото-фіксація прийому
+                    <i class="bi bi-camera-fill me-2"></i> Фото-фіксація прийому (із Заявки)
                 </div>
                 <div class="card-body text-center bg-light">
                     <a href="{{ trans.order.proof_photo.url }}" target="_blank">
@@ -106,23 +154,27 @@
             </div>
             {% endif %}
 
-            <!-- Зв'язок із заявкою -->
+            <!-- Блок лінка на заявку (дублюється для зручності якщо є) -->
             {% if trans.order %}
             <div class="alert alert-primary d-flex align-items-center" role="alert">
-                <i class="bi bi-file-earmark-text fs-3 me-3"></i>
+                <i class="bi bi-info-circle fs-4 me-3"></i>
                 <div>
                     <div class="small fw-bold">Створено на основі заявки</div>
-                    <a href="{% if user.is_staff %}{% url 'manager_order_detail' trans.order.id %}{% else %}#{% endif %}" class="alert-link">
-                        Заявка #{{ trans.order.id }} ({{ trans.order.get_status_display }})
-                    </a>
+                    {% if user.is_staff %}
+                        <a href="{% url 'manager_order_detail' trans.order.id %}" class="alert-link">
+                            Перейти до Заявки #{{ trans.order.id }} ({{ trans.order.get_status_display }})
+                        </a>
+                    {% else %}
+                        <span>Заявка #{{ trans.order.id }} ({{ trans.order.get_status_display }})</span>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
 
         </div>
         
-        <div class="card-footer bg-light text-center py-3">
-            <span class="text-muted small">ID операції: {{ trans.id }}</span>
+        <div class="card-footer bg-light text-center py-3 small text-muted">
+            Створено: {{ trans.created_at|date:"d.m.Y H:i" }}
         </div>
     </div>
 </div>

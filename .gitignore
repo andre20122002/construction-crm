@@ -1,28 +1,27 @@
-Django standard
+Python
+
+pycache/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+Django
 
 *.log
-*.pot
-*.pyc
-pycache/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 media/
+staticfiles/
 
-Virtual Environment (КРИТИЧНО ВАЖЛИВО!)
+Environment Variables (СЕКРЕТИ!)
 
-venv/
-env/
 .env
 
-IDE settings
+Editor directories
 
 .idea/
 .vscode/
 *.swp
-*.swo
-
-OS generated files
-
-.DS_Store
-Thumbs.db

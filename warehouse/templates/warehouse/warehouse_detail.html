@@ -1,6 +1,6 @@
 {% extends 'warehouse/base.html' %}
 
-{% block title %}{{ warehouse.name }} - Звіт{% endblock %}
+{% block title %}{{ warehouse.name }} - Деталі{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -23,199 +23,187 @@
 {% block content %}
 <div class="container-fluid">
     
-    <!-- КНОПКИ (Не для друку) -->
+    <!-- HEADER & BUTTONS -->
     <div class="d-flex justify-content-between align-items-center mb-3 no-print">
         <div>
-            <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm me-2">← Назад</a>
-            <h3 class="h4 mb-0 d-inline-block align-middle">{{ warehouse.name }}</h3>
+            <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm mb-2">
+                <i class="bi bi-arrow-left"></i> На головну
+            </a>
+            <h3 class="fw-bold mb-0">{{ warehouse.name }}</h3>
+            {% if warehouse.budget_limit > 0 %}
+                <small class="text-muted">Ліміт бюджету: {{ warehouse.budget_limit }} ₴</small>
+            {% endif %}
         </div>
-        <button onclick="window.print()" class="btn btn-dark">
-            <i class="bi bi-printer me-2"></i> Друк звіту
-        </button>
+        <div class="btn-group">
+            <button onclick="window.print()" class="btn btn-outline-dark">
+                <i class="bi bi-printer"></i> Друк
+            </button>
+            {% if user.is_staff %}
+                <a href="{% url 'add_transaction' %}?warehouse={{ warehouse.id }}" class="btn btn-success">
+                    <i class="bi bi-plus-lg"></i> Транзакція
+                </a>
+            {% endif %}
+        </div>
     </div>
 
-    <!-- КАРТКА СКЛАДУ -->
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-body p-4">
-            
-            <!-- ЗАГОЛОВОК ЗВІТУ -->
-            <div class="d-flex justify-content-between align-items-start mb-4 border-bottom pb-3">
-                <div>
-                    <h5 class="text-muted text-uppercase small mb-1">Склад / Об'єкт</h5>
-                    <h2 class="fw-bold mb-0">{{ warehouse.name }}</h2>
-                    <p class="text-muted mb-0">{{ warehouse.address|default:"Адреса не вказана" }}</p>
+    <div class="row g-4">
+        
+        <!-- 1. ПОТОЧНІ ЗАЛИШКИ (STOCK BALANCE) -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-0 fw-bold d-flex justify-content-between align-items-center">
+                    <span>📦 Поточні залишки</span>
+                    <span class="badge bg-primary rounded-pill">{{ stock_list|length }}</span>
                 </div>
-                <div class="text-end">
-                    <h5 class="text-muted text-uppercase small mb-1">Вартість залишків</h5>
-                    <h2 class="fw-bold text-success mb-0">{{ total_value }} <small class="fs-6 text-muted">грн</small></h2>
-                    <p class="text-muted mb-0 small">МВО: {{ warehouse.responsible.get_full_name|default:warehouse.responsible.username }}</p>
-                </div>
-            </div>
-
-            <div class="row g-4 mb-5">
-                <!-- ТАБЛИЦЯ ЗАЛИШКІВ -->
-                <div class="col-lg-7">
-                    <h5 class="mb-3 fw-bold">📦 Поточні залишки</h5>
-                    <div class="table-responsive">
-                        <table class="table table-striped table-bordered align-middle mb-0">
-                            <thead class="table-dark">
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light sticky-top">
                                 <tr>
-                                    <th>Матеріал</th>
-                                    <th class="text-center" style="width: 100px;">Кількість</th>
-                                    <th class="text-end" style="width: 100px;">Сума</th>
+                                    <th class="ps-3">Матеріал</th>
+                                    <th class="text-center">К-сть</th>
+                                    <th class="text-end pe-3">Сума (₴)</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for item in balance_list %}
+                                {% for item in stock_list %}
                                 <tr>
-                                    <td>
-                                        <b>{{ item.name }}</b>
-                                        {% if item.min_limit > 0 and item.quantity <= item.min_limit %}
-                                            <span class="badge bg-danger ms-2 no-print">Мало!</span>
+                                    <td class="ps-3">
+                                        <div class="fw-bold text-dark">{{ item.name }}</div>
+                                        <div class="small text-muted">{{ item.unit }}</div>
+                                        {% if item.status == 'critical' %}
+                                            <span class="badge bg-danger">Мало!</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center fw-bold">
-                                        {{ item.quantity }} <small class="text-muted">{{ item.unit }}</small>
+                                    <td class="text-center fw-bold fs-5">
+                                        {{ item.quantity|floatformat:2 }}
                                     </td>
-                                    <td class="text-end fw-bold">{{ item.total_sum }}</td>
+                                    <td class="text-end pe-3 small text-muted">
+                                        {{ item.total_sum|floatformat:2 }}
+                                    </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="3" class="text-center text-muted py-3">Склад порожній.</td>
+                                    <td colspan="3" class="text-center text-muted py-4">Склад порожній</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
+                            {% if stock_list %}
+                            <tfoot class="table-light sticky-bottom">
+                                <tr>
+                                    <td colspan="2" class="text-end fw-bold">Всього:</td>
+                                    <td class="text-end fw-bold pe-3 text-success">{{ total_value|floatformat:2 }} ₴</td>
+                                </tr>
+                            </tfoot>
+                            {% endif %}
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <!-- DRILL-DOWN: ТОП ВИТРАТ -->
-                <div class="col-lg-5">
-                    <h5 class="mb-3 fw-bold text-danger">💸 Топ витрат (куди пішли гроші)</h5>
-                    <div class="card border-danger shadow-sm">
-                        <ul class="list-group list-group-flush">
-                            {% for expense in top_expenses %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <div>
-                                    <div class="fw-bold">{{ expense.material__name }}</div>
-                                    <small class="text-muted">Списано: {{ expense.total_qty }} {{ expense.material__unit }}</small>
-                                </div>
-                                <span class="badge bg-danger rounded-pill fs-6">
-                                    -{{ expense.total_money|floatformat:0 }} ₴
-                                </span>
-                            </li>
-                            {% empty %}
-                            <li class="list-group-item text-center text-muted p-3">
-                                Витрат ще не було.
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </div>
+        <!-- 2. ІСТОРІЯ ТРАНЗАКЦІЙ (TRANSACTION HISTORY) -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-0 fw-bold">
+                    🕘 Історія руху
                 </div>
-            </div>
-
-            <hr>
-
-            <!-- ІСТОРІЯ РУХУ -->
-            <div class="d-flex justify-content-between align-items-center mb-3 mt-4">
-                <h5 class="mb-0 fw-bold">📜 Історія операцій</h5>
-            </div>
-
-            <!-- ПАНЕЛЬ ФІЛЬТРІВ -->
-            <div class="card mb-4 bg-light border-0 no-print">
-                <div class="card-body py-3">
-                    <form method="get" class="row g-2 align-items-end">
-                        <div class="col-md-3 col-6">
-                            <label class="small text-muted fw-bold mb-1">Тип операції</label>
+                
+                <!-- Фільтри -->
+                <div class="p-3 bg-light border-bottom no-print">
+                    <form method="get" class="row g-2">
+                        <div class="col-md-3">
+                            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ f_date_from|default:'' }}">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ f_date_to|default:'' }}">
+                        </div>
+                        <div class="col-md-3">
                             <select name="type" class="form-select form-select-sm">
                                 <option value="">Всі типи</option>
-                                <option value="IN" {% if filter_type == 'IN' %}selected{% endif %}>🟢 Прихід</option>
-                                <option value="OUT" {% if filter_type == 'OUT' %}selected{% endif %}>🔴 Витрата</option>
-                                <option value="TRANSFER" {% if filter_type == 'TRANSFER' %}selected{% endif %}>🔵 Переміщення</option>
+                                <option value="IN" {% if f_type == 'IN' %}selected{% endif %}>Прихід</option>
+                                <option value="OUT" {% if f_type == 'OUT' %}selected{% endif %}>Витрата/Роботи</option>
+                                <option value="LOSS" {% if f_type == 'LOSS' %}selected{% endif %}>Втрати</option>
+                                <!-- 🔥 ОНОВЛЕНО: value="MOVE" -->
+                                <option value="MOVE" {% if f_type == 'MOVE' %}selected{% endif %}>Переміщення</option>
                             </select>
                         </div>
-                        
-                        <div class="col-md-3 col-6">
-                            <label class="small text-muted fw-bold mb-1">Матеріал</label>
-                            <select name="material" class="form-select form-select-sm">
-                                <option value="">Всі матеріали</option>
-                                {% for m in all_materials %}
-                                    <option value="{{ m.id }}" {% if filter_material == m.id %}selected{% endif %}>{{ m.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="col-md-2 col-6">
-                            <label class="small text-muted fw-bold mb-1">З дати</label>
-                            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filter_date_from|default:'' }}">
-                        </div>
-                        <div class="col-md-2 col-6">
-                            <label class="small text-muted fw-bold mb-1">По дату</label>
-                            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filter_date_to|default:'' }}">
-                        </div>
-
-                        <div class="col-md-2 d-flex gap-1">
-                            <button type="submit" class="btn btn-primary btn-sm w-100" title="Фільтрувати">
-                                <i class="bi bi-funnel-fill"></i>
-                            </button>
-                            <a href="{% url 'warehouse_detail' warehouse.id %}" class="btn btn-outline-secondary btn-sm" title="Скинути фільтри">
-                                <i class="bi bi-x-lg"></i>
-                            </a>
+                        <div class="col-md-3">
+                            <button type="submit" class="btn btn-sm btn-primary w-100">Фільтр</button>
                         </div>
                     </form>
                 </div>
-            </div>
-            
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Дата</th>
-                            <th>Тип</th>
-                            <th>Матеріал</th>
-                            <th>Кількість</th>
-                            <th>Коментар</th>
-                            <th class="text-end no-print">Дії</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for tr in transactions %}
-                        <tr style="cursor: pointer;" onclick="window.location='{% url 'transaction_detail' tr.id %}'">
-                            <td class="text-muted small">{{ tr.created_at|date:"d.m.Y H:i" }}</td>
-                            <td>
-                                {% if tr.transaction_type == 'IN' %}
-                                    <span class="badge bg-success bg-opacity-10 text-success border border-success">Прихід</span>
-                                {% elif tr.transaction_type == 'OUT' %}
-                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger">Витрата</span>
-                                {% elif tr.transaction_type == 'TRANSFER' %}
-                                    <span class="badge bg-info bg-opacity-10 text-info border border-info">Переміщення</span>
-                                {% endif %}
-                            </td>
-                            <td class="fw-bold">{{ tr.material.name }}</td>
-                            <td>
-                                <b>{{ tr.quantity }}</b> {{ tr.material.unit }}
-                            </td>
-                            <td class="text-muted small text-truncate" style="max-width: 200px;">
-                                {{ tr.description|default:"-" }}
-                            </td>
-                            <td class="text-end no-print btn-view-details">
-                                <a href="{% url 'transaction_detail' tr.id %}" class="btn btn-sm btn-light border" title="Деталі">
-                                    <i class="bi bi-eye"></i>
-                                </a>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
-                                За вашим запитом нічого не знайдено.
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
 
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle small">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">Дата</th>
+                                <th>Дія</th>
+                                <th>Матеріал</th>
+                                <th>К-сть</th>
+                                <th>Коментар</th>
+                                <th class="text-end no-print"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tr in transactions %}
+                            <!-- Приховуємо IN-трансфери, щоб не дублювати -->
+                            {% if not tr.transfer_group_id or tr.transaction_type == 'OUT' %}
+                            <tr class="{% if tr.transfer_group_id %}table-info bg-opacity-10{% endif %}">
+                                <td class="ps-3 text-muted" style="white-space: nowrap;">
+                                    {{ tr.date|date:"d.m.y" }}
+                                    <div style="font-size: 0.7em;">{{ tr.created_at|date:"H:i" }}</div>
+                                </td>
+                                <td>
+                                    <!-- ЛОГІКА БЕЙДЖІВ -->
+                                    {% if tr.transfer_group_id %}
+                                        <span class="badge bg-info text-dark border border-info">Переміщення</span>
+                                    {% elif tr.transaction_type == 'IN' %}
+                                        <span class="badge bg-success">Прихід</span>
+                                    {% elif tr.transaction_type == 'OUT' %}
+                                        <span class="badge bg-warning text-dark">Витрата</span>
+                                    {% elif tr.transaction_type == 'LOSS' %}
+                                        <span class="badge bg-danger">Втрата</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-bold text-dark">
+                                    {{ tr.material.name }}
+                                </td>
+                                <td>
+                                    <span class="fw-bold {% if tr.transaction_type == 'IN' %}text-success{% else %}text-danger{% endif %}">
+                                        {% if tr.transaction_type == 'IN' %}+{% else %}-{% endif %}{{ tr.quantity|floatformat:2 }}
+                                    </span>
+                                    <small class="text-muted">{{ tr.material.unit }}</small>
+                                </td>
+                                <td class="text-muted text-truncate" style="max-width: 150px;" title="{{ tr.description }}">
+                                    {% if tr.transfer_group_id %}
+                                        <i class="bi bi-arrow-right-circle me-1"></i> {{ tr.description|default:"Переміщення" }}
+                                    {% else %}
+                                        {{ tr.description|default:"-" }}
+                                    {% endif %}
+                                </td>
+                                <td class="text-end no-print pe-3">
+                                    <a href="{% url 'transaction_detail' tr.id %}" class="btn btn-sm btn-light text-secondary border-0">
+                                        <i class="bi bi-chevron-right"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-5">
+                                    <i class="bi bi-clock-history fs-1 mb-2 d-block opacity-25"></i>
+                                    Руху матеріалів ще не було
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+
     </div>
 </div>
 {% endblock %}

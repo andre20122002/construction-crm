@@ -1,403 +1,167 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
-{% block title %}Акт списання{% endblock %}
+{% block title %}Акт списання / Роботи{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* Перемикач типу (Робота / Втрата) */
-    .type-selector .btn-check:checked + .btn {
-        border-width: 2px;
+    /* Стиль для великих перемикачів */
+    .btn-check:checked + .btn-outline-warning {
+        background-color: #ffc107; color: #000; font-weight: bold; border-color: #ffc107;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        transform: scale(1.02);
-        font-weight: bold;
     }
-    .btn-work-checked { 
-        background-color: #ffc107 !important; color: #000 !important; border-color: #ffc107 !important; 
+    .btn-check:checked + .btn-outline-danger {
+        background-color: #dc3545; color: #fff; font-weight: bold; border-color: #dc3545;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    .btn-loss-checked { 
-        background-color: #dc3545 !important; color: #fff !important; border-color: #dc3545 !important; 
+    .btn-check:checked + .btn-outline-success {
+        background-color: #198754; color: #fff; font-weight: bold; border-color: #198754;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-
-    /* Кнопка фото */
-    .btn-photo {
-        border: 2px dashed #adb5bd; background: #f8f9fa; border-radius: 12px;
-        padding: 20px; text-align: center; cursor: pointer; transition: all 0.2s;
-        display: flex; align-items: center; justify-content: center; flex-direction: column;
-        color: #6c757d;
-    }
-    .btn-photo:active { border-color: #198754; background: #d1e7dd; color: #0f5132; }
-    .btn-photo.has-file { border-color: #198754; background: #d1e7dd; color: #0f5132; }
-
-    /* Панель залишків (Stock Panel) */
-    .stock-panel {
-        background-color: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 12px;
-        padding: 15px; margin-bottom: 20px; display: none; /* Приховано за замовчуванням */
-        animation: fadeIn 0.3s ease-in-out;
-    }
-    .stock-val-big { font-size: 1.8rem; font-weight: 800; color: #198754; line-height: 1; }
     
-    /* Кнопки швидкого вводу */
-    .quick-btn { min-width: 50px; font-weight: bold; }
-
-    /* Сканер */
-    #scanner-modal {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.95); z-index: 9999; display: none;
-        flex-direction: column; justify-content: center; align-items: center;
+    /* Блок етапів (Прихований за замовчуванням) */
+    #construction-details {
+        background-color: #f8f9fa;
+        border-left: 5px solid #0d6efd;
+        display: none; /* JS покаже це за потреби */
+        transition: all 0.3s ease;
     }
-    #reader { width: 100%; max-width: 500px; border-radius: 12px; overflow: hidden; background: #000; }
-    .scan-overlay-btn { margin-top: 20px; padding: 12px 30px; font-size: 1.1rem; border-radius: 30px; }
-
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .form-label { font-weight: 600; color: #555; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4 mb-5" style="max-width: 600px;">
+<div class="container mt-4 mb-5" style="max-width: 800px;">
     
-    <!-- МОДАЛЬНЕ ВІКНО СКАНЕРА -->
-    <div id="scanner-modal">
-        <div class="text-white mb-3 text-center">
-            <i class="bi bi-qr-code-scan fs-1"></i><br>
-            Наведіть камеру на штрихкод
+    <div class="card shadow-lg border-0">
+        <div class="card-header bg-white pt-4 pb-0 border-0">
+            <h3 class="fw-bold mb-1">📝 Нова операція</h3>
+            <p class="text-muted small">Списання матеріалів на роботи або фіксація втрат</p>
         </div>
-        <div id="reader"></div>
-        <button class="btn btn-light text-danger fw-bold scan-overlay-btn" onclick="stopScanner()">
-            <i class="bi bi-x-lg me-2"></i> Скасувати
-        </button>
-    </div>
-
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="h4 fw-bold mb-0">📉 Акт списання</h3>
-        <a href="{% url 'index' %}" class="btn-close"></a>
-    </div>
-
-    <form method="post" enctype="multipart/form-data" id="transactionForm">
-        {% csrf_token %}
-
-        <!-- 1. ТИП ОПЕРАЦІЇ -->
-        <div class="mb-4">
-            <div class="btn-group w-100 type-selector" role="group">
-                <input type="radio" class="btn-check" name="ui_type" id="optWork" autocomplete="off" checked onchange="setType('OUT')">
-                <label class="btn btn-outline-warning py-3" for="optWork">
-                    <i class="bi bi-hammer fs-4 d-block mb-1"></i>
-                    На роботи
-                </label>
-
-                <input type="radio" class="btn-check" name="ui_type" id="optLoss" autocomplete="off" onchange="setType('LOSS')">
-                <label class="btn btn-outline-danger py-3" for="optLoss">
-                    <i class="bi bi-trash3 fs-4 d-block mb-1"></i>
-                    Втрата / Бій
-                </label>
-            </div>
-            <!-- Приховане поле форми Django -->
-            <div style="display:none;">{{ form.transaction_type }}</div>
-        </div>
-
-        <!-- 2. ДАТА ТА ЗМІНА -->
-        <div class="row g-3 mb-3">
-            <div class="col-6">
-                <label class="form-label small fw-bold text-muted">Дата</label>
-                {{ form.date }}
-            </div>
-            <div class="col-6">
-                <label class="form-label small fw-bold text-muted">Зміна</label>
-                {{ form.shift }}
-            </div>
-        </div>
-
-        <!-- 3. СКЛАД -->
-        <div class="mb-3">
-            <label class="form-label small fw-bold text-muted">З якого складу?</label>
-            {{ form.warehouse }}
-        </div>
-
-        <!-- 4. МАТЕРІАЛ -->
-        <div class="mb-3">
-            <label class="form-label small fw-bold text-muted">Що списуємо?</label>
-            <div class="input-group">
-                {{ form.material }}
-                <button class="btn btn-dark" type="button" onclick="startScanner()">
-                    <i class="bi bi-qr-code-scan"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- === НОВЕ: ПАНЕЛЬ ЗАЛИШКІВ === -->
-        <div id="stockPanel" class="stock-panel shadow-sm">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <div class="small text-success text-uppercase fw-bold">Доступно на складі</div>
-                    <div class="stock-val-big" id="stockValueDisplay">0</div>
-                    <div class="small text-muted" id="stockUnitDisplay">од.</div>
+        
+        <div class="card-body p-4">
+            
+            {% if form.errors %}
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> Перевірте правильність заповнення форми.
+                    {{ form.errors }}
                 </div>
-                <div class="text-end">
-                    <button type="button" class="btn btn-outline-success fw-bold" onclick="setMaxQty()">
-                        <i class="bi bi-arrow-up-circle me-1"></i> MAX
-                        <br><span style="font-size: 0.7em">Весь залишок</span>
+            {% endif %}
+
+            <!-- 
+                data-stock-validate: активує stock_ajax.js
+                data-hint-target: селектор для виводу залишку
+                data-stages-url: URL для завантаження етапів (transaction_form.js)
+            -->
+            <form method="post" enctype="multipart/form-data" id="transactionForm" 
+                  data-stock-validate 
+                  data-hint-target="#stock-hint"
+                  data-stages-url="{% url 'ajax_load_stages' %}">
+                {% csrf_token %}
+                
+                <!-- 1. ТИП ТРАНЗАКЦІЇ (RADIO BUTTONS) -->
+                <div class="mb-4 text-center">
+                    <label class="form-label d-block text-start mb-2">Що робимо?</label>
+                    <div class="btn-group w-100" role="group">
+                        
+                        <input type="radio" class="btn-check" name="transaction_type" id="type_out" value="OUT" checked>
+                        <label class="btn btn-outline-warning py-3" for="type_out">
+                            <i class="bi bi-hammer fs-4 d-block mb-1"></i>
+                            На роботи
+                        </label>
+
+                        <input type="radio" class="btn-check" name="transaction_type" id="type_loss" value="LOSS">
+                        <label class="btn btn-outline-danger py-3" for="type_loss">
+                            <i class="bi bi-trash3 fs-4 d-block mb-1"></i>
+                            Списання (Бій)
+                        </label>
+                        
+                        <!-- Опція "Прихід" прихована для звичайних користувачів -->
+                        {% if user.is_staff or user.is_superuser %}
+                        <input type="radio" class="btn-check" name="transaction_type" id="type_in" value="IN">
+                        <label class="btn btn-outline-success py-3" for="type_in">
+                            <i class="bi bi-box-seam fs-4 d-block mb-1"></i>
+                            Прихід (Кор.)
+                        </label>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 2. ОСНОВНІ ДАНІ -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Склад / Об'єкт</label>
+                        {{ form.warehouse }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Дата операції</label>
+                        <input type="date" name="date" class="form-control" value="{% now 'Y-m-d' %}">
+                    </div>
+                </div>
+
+                <!-- 3. ДЕТАЛІ БУДІВНИЦТВА (Тільки для OUT) -->
+                <div id="construction-details" class="p-3 mb-4 rounded">
+                    <h6 class="fw-bold text-primary mb-3"><i class="bi bi-bricks me-2"></i> Деталі робіт</h6>
+                    <div class="mb-3">
+                        <label class="form-label">Етап будівництва</label>
+                        <!-- Цей селект буде заповнюватись через JS (AJAX) -->
+                        <select name="stage" id="id_stage" class="form-select">
+                            <option value="">---------</option>
+                        </select>
+                        <div class="form-text">Оберіть етап, щоб списання врахувалось у план-факт.</div>
+                    </div>
+                </div>
+
+                <!-- 4. МАТЕРІАЛ -->
+                <div class="card bg-light border-0 mb-4">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Матеріал</label>
+                            <!-- TomSelect буде підключено автоматично через клас .tom-select -->
+                            {{ form.material }}
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-6">
+                                <label class="form-label">Кількість</label>
+                                {{ form.quantity }}
+                            </div>
+                            <div class="col-6 d-flex align-items-end">
+                                <!-- Місце для підказки залишку (наповнюється через stock_ajax.js) -->
+                                <div id="stock-hint" class="form-text text-muted w-100 ps-2" style="display: none;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. ДОДАТКОВО -->
+                <div class="mb-3">
+                    <label class="form-label">Коментар / Призначення</label>
+                    {{ form.description }}
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label">Фото підтвердження</label>
+                    {{ form.photo }}
+                </div>
+
+                <!-- КНОПКИ -->
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg shadow">
+                        <i class="bi bi-check-lg me-2"></i> Провести операцію
                     </button>
+                    <a href="javascript:history.back()" class="btn btn-light text-muted">Скасувати</a>
                 </div>
-            </div>
-        </div>
 
-        <!-- 5. КІЛЬКІСТЬ (З кнопками) -->
-        <div class="mb-4">
-            <label class="form-label small fw-bold text-muted">Кількість до списання</label>
-            
-            <div class="input-group input-group-lg mb-2">
-                <button class="btn btn-outline-secondary" type="button" onclick="adjQty(-1)">−</button>
-                <input type="number" name="quantity" id="qtyInput" class="form-control text-center fw-bold" step="0.01" placeholder="0.00" required>
-                <button class="btn btn-outline-secondary" type="button" onclick="adjQty(1)">+</button>
-            </div>
-            
-            <!-- Швидкі кнопки -->
-            <div class="d-flex justify-content-between gap-2">
-                <button type="button" class="btn btn-sm btn-light border flex-grow-1 quick-btn" onclick="adjQty(-5)">-5</button>
-                <button type="button" class="btn btn-sm btn-light border flex-grow-1 quick-btn" onclick="adjQty(-1)">-1</button>
-                <button type="button" class="btn btn-sm btn-light border flex-grow-1 quick-btn" onclick="adjQty(1)">+1</button>
-                <button type="button" class="btn btn-sm btn-light border flex-grow-1 quick-btn" onclick="adjQty(5)">+5</button>
-            </div>
-            <div id="qtyWarning" class="form-text text-danger fw-bold" style="display:none;">⛔ Перевищує залишок!</div>
+            </form>
         </div>
-
-        <!-- 6. ВИД РОБІТ -->
-        <div id="workTypeBlock" class="mb-3">
-            <label class="form-label small fw-bold text-muted">Етап робіт</label>
-            {{ form.work_type }}
-        </div>
-
-        <!-- 7. КОМЕНТАР -->
-        <div class="mb-4">
-            <label class="form-label small fw-bold text-muted">Коментар</label>
-            {{ form.description }}
-        </div>
-
-        <!-- 8. ФОТО -->
-        <div class="mb-5">
-            <label class="btn-photo w-100" id="photoBtn">
-                <i class="bi bi-camera fs-2 mb-2"></i>
-                <span>Додати фото</span>
-                <input type="file" name="photo" id="photoInput" accept="image/*" hidden onchange="previewPhoto()">
-            </label>
-        </div>
-
-        <div class="d-grid">
-            <button type="submit" class="btn btn-primary btn-lg py-3 shadow" id="submitBtn">
-                <i class="bi bi-check-lg me-2"></i> СПИСАТИ
-            </button>
-        </div>
-
-    </form>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-<!-- Дані з бекенду -->
-<script id="stock-data" type="application/json">{{ stock_json|safe }}</script>
-<script id="barcode-data" type="application/json">{{ barcode_json|safe }}</script>
-
-<script>
-    const whSelect = document.getElementById('id_warehouse');
-    const matSelect = document.getElementById('id_material');
-    const typeSelect = document.getElementById('type-select') || document.querySelector('[name="transaction_type"]');
-    const qtyInput = document.getElementById('qtyInput');
-    const stockData = JSON.parse(document.getElementById('stock-data').textContent);
-    const barcodeMap = JSON.parse(document.getElementById('barcode-data').textContent);
-    
-    let currentMaxStock = 0; // Зберігає поточний максимум
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // Стилізація Django віджетів
-        whSelect.classList.add('form-select', 'form-select-lg');
-        matSelect.classList.add('form-select', 'form-select-lg');
-        
-        // Дата за замовчуванням
-        const dateInput = document.getElementById('id_date');
-        if (!dateInput.value) dateInput.valueAsDate = new Date();
-
-        // Ініціалізація стану
-        const optLoss = document.getElementById('optLoss');
-        if (typeSelect.value === 'LOSS') {
-            optLoss.checked = true;
-            setType('LOSS');
-        } else {
-            setType('OUT');
-        }
-
-        // Запуск логіки
-        filterMaterials();
-        
-        // Якщо передано параметр в URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const preselectedMatId = urlParams.get('material');
-        if (preselectedMatId) {
-            setTimeout(() => { matSelect.value = preselectedMatId; updateStockDisplay(); }, 300);
-        }
-    });
-
-    // --- ЛОГІКА ТИПІВ (Робота/Втрата) ---
-    function setType(val) {
-        typeSelect.value = val;
-        const workTypeBlock = document.getElementById('workTypeBlock');
-        const btnWork = document.querySelector('label[for="optWork"]');
-        const btnLoss = document.querySelector('label[for="optLoss"]');
-
-        if (val === 'OUT') {
-            btnWork.classList.add('btn-work-checked');
-            btnLoss.classList.remove('btn-loss-checked');
-            if(workTypeBlock) workTypeBlock.style.display = 'block';
-        } else {
-            btnWork.classList.remove('btn-work-checked');
-            btnLoss.classList.add('btn-loss-checked');
-            if(workTypeBlock) workTypeBlock.style.display = 'none';
-        }
-    }
-
-    // --- ФІЛЬТРАЦІЯ ТА ЗАЛИШКИ ---
-    function filterMaterials() {
-        const whId = whSelect.value;
-        const availableItems = stockData[whId] || {};
-        
-        // Показуємо в списку тільки те, що є (або дозволяємо все, але з позначкою)
-        for (let i = 0; i < matSelect.options.length; i++) {
-            const opt = matSelect.options[i];
-            const matId = opt.value;
-            if (!matId) continue;
-
-            if (availableItems[matId] && availableItems[matId] > 0) {
-                if (!opt.text.includes(' [')) {
-                    opt.text = `${opt.text} [Є: ${availableItems[matId]}]`;
-                }
-            }
-        }
-        updateStockDisplay();
-    }
-
-    function updateStockDisplay() {
-        const whId = whSelect.value;
-        const matId = matSelect.value;
-        const panel = document.getElementById('stockPanel');
-        const valDisplay = document.getElementById('stockValueDisplay');
-        
-        if (whId && matId && stockData[whId]) {
-            currentMaxStock = parseFloat(stockData[whId][matId] || 0);
-            
-            if (currentMaxStock > 0) {
-                valDisplay.textContent = currentMaxStock;
-                panel.style.display = 'block';
-            } else {
-                panel.style.display = 'none';
-                currentMaxStock = 0;
-            }
-        } else {
-            panel.style.display = 'none';
-            currentMaxStock = 0;
-        }
-        validateQty(); // Перевірити поточне введене значення
-    }
-
-    // --- КЕРУВАННЯ КІЛЬКІСТЮ ---
-    function setMaxQty() {
-        if (currentMaxStock > 0) {
-            qtyInput.value = currentMaxStock;
-            validateQty();
-        }
-    }
-
-    function adjQty(delta) {
-        let val = parseFloat(qtyInput.value) || 0;
-        val += delta;
-        val = parseFloat(val.toFixed(2));
-        
-        // Логіка обмежень
-        if (val < 0) val = 0;
-        
-        // Якщо намагаємось ввести більше ніж є - обмежуємо (опціонально, але зручно)
-        // Але краще просто попередити, раптом пересорт
-        
-        qtyInput.value = val;
-        validateQty();
-    }
-
-    function validateQty() {
-        const val = parseFloat(qtyInput.value) || 0;
-        const warning = document.getElementById('qtyWarning');
-        const btn = document.getElementById('submitBtn');
-
-        if (currentMaxStock > 0 && val > currentMaxStock) {
-            warning.style.display = 'block';
-            qtyInput.classList.add('is-invalid');
-            btn.classList.add('disabled'); // Блокуємо кнопку
-        } else {
-            warning.style.display = 'none';
-            qtyInput.classList.remove('is-invalid');
-            btn.classList.remove('disabled');
-        }
-    }
-
-    qtyInput.addEventListener('input', validateQty);
-
-    // --- ФОТО ПРЕВ'Ю ---
-    function previewPhoto() {
-        const file = document.getElementById('photoInput').files[0];
-        const btn = document.getElementById('photoBtn');
-        if (file) {
-            btn.classList.add('has-file');
-            btn.innerHTML = `<i class="bi bi-check-lg fs-1 mb-2"></i><span class="fw-bold">Фото додано!</span>`;
-        }
-    }
-
-    // --- СКАНЕР ---
-    let html5QrcodeScanner = null;
-
-    function startScanner() {
-        document.getElementById('scanner-modal').style.display = 'flex';
-        html5QrcodeScanner = new Html5Qrcode("reader");
-        html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
-            (decodedText) => {
-                stopScanner();
-                if (barcodeMap[decodedText]) {
-                    const item = barcodeMap[decodedText];
-                    if(navigator.vibrate) navigator.vibrate(200); 
-                    
-                    // Встановлюємо склад і матеріал
-                    const whId = whSelect.value;
-                    const stock = stockData[whId] || {};
-                    
-                    matSelect.value = item.id;
-                    updateStockDisplay();
-                    
-                    if (!stock[item.id]) {
-                        alert(`Увага! Матеріалу "${item.name}" немає на обліку цього складу.`);
-                    }
-                } else {
-                    alert(`Штрихкод ${decodedText} не знайдено.`);
-                }
-            }
-        ).catch(err => {
-            alert("Помилка камери: " + err); 
-            stopScanner();
-        });
-    }
-
-    function stopScanner() {
-        if (html5QrcodeScanner) {
-            html5QrcodeScanner.stop().then(() => {
-                html5QrcodeScanner.clear();
-                document.getElementById('scanner-modal').style.display = 'none';
-            });
-        } else {
-            document.getElementById('scanner-modal').style.display = 'none';
-        }
-    }
-
-    // Слухачі змін
-    whSelect.addEventListener('change', () => {
-        filterMaterials();
-        updateStockDisplay();
-    });
-    matSelect.addEventListener('change', updateStockDisplay);
-
-</script>
+<!-- Підключаємо логіку перевірки залишків -->
+<script src="{% static 'warehouse/js/stock_ajax.js' %}"></script>
+<!-- Підключаємо логіку форми транзакцій (етапи, перемикачі) -->
+<script src="{% static 'warehouse/js/transaction_form.js' %}"></script>
 {% endblock %}

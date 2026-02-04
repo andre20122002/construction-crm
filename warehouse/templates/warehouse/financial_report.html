@@ -1,4 +1,5 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}Фінансовий звіт{% endblock %}
 
@@ -27,188 +28,59 @@
         </div>
     </form>
 
+    <!-- KPI -->
     <div class="row g-4 mb-4">
-        <!-- 1. БЮДЖЕТИ ПО ОБ'ЄКТАХ -->
+        <!-- Графік 1: Постачальники -->
         <div class="col-lg-6">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-header bg-white border-0 fw-bold">🏢 Витрати vs Бюджет по об'єктах</div>
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 fw-bold">
+                    🏗️ Топ постачальників (Витрати)
+                </div>
                 <div class="card-body">
-                    <canvas id="whChart" style="max-height: 300px;"></canvas>
+                    <div style="height: 300px; position: relative;">
+                        <canvas id="suppliersChart"></canvas>
+                        <div class="text-muted small mt-2 d-none text-center" data-empty-msg="sup">Немає даних по постачальниках</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 2. ПОСТАЧАЛЬНИКИ -->
+        <!-- Графік 2: Динаміка -->
         <div class="col-lg-6">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-header bg-white border-0 fw-bold">🤝 ТОП Постачальників (за сумою)</div>
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 fw-bold">
+                    📅 Динаміка витрат по днях
+                </div>
                 <div class="card-body">
-                    <canvas id="supChart" style="max-height: 300px;"></canvas>
+                    <div style="height: 300px; position: relative;">
+                        <canvas id="trendChart"></canvas>
+                        <div class="text-muted small mt-2 d-none text-center" data-empty-msg="trend">Немає даних за період</div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- 3. ДИНАМІКА -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white border-0 fw-bold">📈 Динаміка витрат (по місяцях)</div>
-        <div class="card-body">
-            <canvas id="trendChart" style="max-height: 250px;"></canvas>
-        </div>
-    </div>
-
-    <!-- ТАБЛИЦЯ ПЕРЕВИЩЕНЬ -->
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-danger text-white border-0 fw-bold">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i> Контроль бюджету (Перевищення)
-        </div>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-light">
-                    <tr>
-                        <th>Об'єкт</th>
-                        <th class="text-end">Ліміт</th>
-                        <th class="text-end">Витрачено</th>
-                        <th class="text-end">Статус</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for wh, data in warehouses_stats.items %}
-                    <tr>
-                        <td class="fw-bold">{{ wh }}</td>
-                        <td class="text-end">{{ data.limit }} ₴</td>
-                        <td class="text-end fw-bold">{{ data.spent|floatformat:2 }} ₴</td>
-                        <td class="text-end">
-                            {% if data.overrun > 0 %}
-                                <span class="badge bg-danger">Overrun: +{{ data.overrun|floatformat:2 }} ₴</span>
-                            {% else %}
-                                <span class="badge bg-success">OK</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="4" class="text-center text-muted p-3">Даних немає</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
 </div>
 
-<!-- ДАНІ ДЛЯ ГРАФІКІВ (Приховані блоки JSON) -->
-<script id="wh-labels" type="application/json">{{ wh_labels|safe }}</script>
-<script id="wh-spent" type="application/json">{{ wh_spent|safe }}</script>
-<script id="wh-limits" type="application/json">{{ wh_limits|safe }}</script>
-
-<script id="sup-labels" type="application/json">{{ sup_labels|safe }}</script>
-<script id="sup-data" type="application/json">{{ sup_data|safe }}</script>
-
-<script id="date-labels" type="application/json">{{ date_labels|safe }}</script>
-<script id="date-values" type="application/json">{{ date_values|safe }}</script>
+<!-- JSON DATA FOR CHARTS -->
+{{ sup_labels|json_script:"sup-labels" }}
+{{ sup_data|json_script:"sup-data" }}
+{{ date_labels|json_script:"date-labels" }}
+{{ date_values|json_script:"date-values" }}
 
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Підключаємо локальний Chart.js (vendor) -->
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+
+<!-- Логіка графіків -->
+<script src="{% static 'warehouse/js/financial_charts.js' %}"></script>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Функція для безпечного парсингу JSON з HTML
-        function getData(id) {
-            try {
-                return JSON.parse(document.getElementById(id).textContent);
-            } catch (e) {
-                console.error("Error parsing JSON for " + id, e);
-                return [];
-            }
-        }
-
-        // Отримуємо дані з прихованих блоків
-        const whLabels = getData('wh-labels');
-        const whSpent = getData('wh-spent');
-        const whLimits = getData('wh-limits');
-        
-        const supLabels = getData('sup-labels');
-        const supData = getData('sup-data');
-        
-        const dateLabels = getData('date-labels');
-        const dateValues = getData('date-values');
-
-        // 1. БЮДЖЕТИ
-        const ctxWh = document.getElementById('whChart');
-        if (ctxWh && whLabels.length > 0) {
-            new Chart(ctxWh, {
-                type: 'bar',
-                data: {
-                    labels: whLabels,
-                    datasets: [
-                        {
-                            label: 'Витрачено',
-                            data: whSpent,
-                            backgroundColor: '#dc3545',
-                            borderRadius: 4,
-                            order: 1
-                        },
-                        {
-                            label: 'Ліміт бюджету',
-                            data: whLimits,
-                            backgroundColor: 'rgba(25, 135, 84, 0.0)', // Прозорий фон
-                            borderColor: '#198754',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            type: 'line', // Лінія поверх
-                            pointRadius: 0,
-                            order: 0
-                        }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
-
-        // 2. ПОСТАЧАЛЬНИКИ
-        const ctxSup = document.getElementById('supChart');
-        if (ctxSup && supLabels.length > 0) {
-            new Chart(ctxSup, {
-                type: 'doughnut',
-                data: {
-                    labels: supLabels,
-                    datasets: [{
-                        data: supData,
-                        backgroundColor: ['#0d6efd', '#ffc107', '#20c997', '#6f42c1', '#fd7e14'],
-                        borderWidth: 0
-                    }]
-                },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
-                    plugins: { legend: { position: 'right' } } 
-                }
-            });
-        }
-
-        // 3. ДИНАМІКА
-        const ctxTrend = document.getElementById('trendChart');
-        if (ctxTrend && dateLabels.length > 0) {
-            new Chart(ctxTrend, {
-                type: 'line',
-                data: {
-                    labels: dateLabels,
-                    datasets: [{
-                        label: 'Витрати (грн)',
-                        data: dateValues,
-                        borderColor: '#0d6efd',
-                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }]
-                },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
-                    scales: { y: { beginAtZero: true } } 
-                }
-            });
+        if (window.FinancialCharts) {
+            window.FinancialCharts.init();
         }
     });
 </script>

@@ -1,109 +1,93 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}Залишки на складах{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* Покращений контраст для друку та перегляду */
-    .table-header-custom { background-color: #343a40; color: white; }
-    .filter-card { background-color: #ffffff; border: 1px solid #dee2e6; }
+    .filter-card { background-color: #fff; border: 1px solid #dee2e6; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="h4 fw-bold"><i class="bi bi-box-seam me-2"></i> Залишки на складах</h3>
         <div class="text-end">
-            <div class="text-muted small text-uppercase">Загальна вартість складу</div>
+            <div class="text-muted small text-uppercase">Загальна вартість</div>
             <div class="fs-4 fw-bold text-success">{{ total_value }} ₴</div>
         </div>
     </div>
 
-    <!-- ФІЛЬТРИ (Білий фон для контрасту) -->
+    <!-- Фільтри -->
     <div class="card shadow-sm mb-4 border-0 filter-card no-print">
         <div class="card-body py-3">
-            <form method="get" class="row g-2 align-items-end">
-                <div class="col-md-4">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-3">
                     <label class="small fw-bold text-muted">Склад</label>
                     <select name="warehouse" class="form-select">
-                        <option value="">Всі склади</option>
-                        {% for wh in warehouses %}
-                            <option value="{{ wh.id }}" {% if selected_wh == wh.id %}selected{% endif %}>{{ wh.name }}</option>
+                        <option value="">-- Всі --</option>
+                        {% for w in warehouses %}
+                            <option value="{{ w.id }}" {% if selected_wh == w.id %}selected{% endif %}>{{ w.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-4">
-                    <label class="small fw-bold text-muted">Матеріал</label>
-                    <select name="material" class="form-select">
-                        <option value="">Всі матеріали</option>
-                        {% for m in materials %}
-                            <option value="{{ m.id }}" {% if selected_mat == m.id %}selected{% endif %}>{{ m.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-filter"></i> Показати</button>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" name="export" value="excel" class="btn btn-success text-white w-100">
-                        <i class="bi bi-file-earmark-excel"></i> Excel
+                
+                <div class="col-md-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search me-1"></i> Показати
+                    </button>
+                    <!-- Кнопка експорту -->
+                    <button type="submit" name="export" value="excel" class="btn btn-success" title="Експорт в Excel">
+                        <i class="bi bi-file-earmark-excel"></i>
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- ТАБЛИЦЯ -->
+    <!-- Таблиця -->
     <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">Список матеріалів</h5>
+            <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
+                <i class="bi bi-printer me-2"></i> Друк
+            </button>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
-                <!-- Темна шапка для чіткості -->
-                <thead class="table-header-custom">
+                <thead class="table-light">
                     <tr>
                         <th class="ps-3">Склад</th>
-                        <th>Матеріал</th>
-                        <th class="text-center">Залишок (Факт)</th>
+                        <th>Матеріал / Характеристики</th>
+                        <th class="text-center">Кількість</th>
                         <th class="text-center">Од.</th>
-                        <th class="text-center">Мін. ліміт</th>
-                        <th class="text-end">Ціна (Сер.)</th>
+                        <th class="text-end">Ціна</th>
                         <th class="text-end pe-3">Сума</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in stock_data %}
-                    <tr {% if row.status == 'critical' %}class="table-danger border-start border-5 border-danger"{% endif %}>
-                        <td class="ps-3">{{ row.warehouse }}</td>
-                        <td class="fw-bold">
-                            <a href="{% url 'material_detail' row.material_id %}" class="text-decoration-none text-dark d-flex align-items-center">
-                                {{ row.material }}
-                                <i class="bi bi-box-arrow-in-up-right ms-2 text-muted small opacity-50"></i>
-                            </a>
-                            
+                    {% for row in report_data %}
+                    <tr>
+                        <td class="ps-3"><small class="text-muted fw-bold">{{ row.warehouse }}</small></td>
+                        <td>
+                            <div class="fw-bold">{{ row.material }}</div>
+                            {% if row.characteristics %}
+                                <span class="badge bg-info text-dark bg-opacity-25 border border-info">
+                                    {{ row.characteristics }}
+                                </span>
+                            {% endif %}
                             {% if row.status == 'critical' %}
                                 <span class="badge bg-danger ms-2">Мало!</span>
                             {% endif %}
                         </td>
-                        <td class="text-center fs-5 fw-bold">{{ row.quantity }}</td>
+                        <td class="text-center fs-5 fw-bold">{{ row.quantity|floatformat:2 }}</td>
                         <td class="text-center text-muted small">{{ row.unit }}</td>
-                        <td class="text-center text-muted">
-                            {% if row.min_limit > 0 %}
-                                {{ row.min_limit }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
                         <td class="text-end">{{ row.avg_price }}</td>
-                        <td class="text-end pe-3 fw-bold">{{ row.total_value }}</td>
+                        <td class="text-end pe-3 fw-bold">{{ row.total_sum }}</td>
                     </tr>
                     {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
-                            <i class="bi bi-box2 fs-1 d-block mb-2 opacity-50"></i>
-                            Залишків не знайдено (або склад порожній)
-                        </td>
-                    </tr>
+                    <tr><td colspan="6" class="text-center py-5 text-muted">Залишків не знайдено.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

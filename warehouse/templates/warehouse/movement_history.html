@@ -13,7 +13,6 @@
     <div class="card shadow-sm mb-4 border-0 bg-light no-print">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end">
-                <!-- Дата: займають по 2 колонки на великих екранах, по 6 на мобільних -->
                 <div class="col-6 col-lg-2">
                     <label class="small fw-bold text-muted">З дати</label>
                     <input type="date" name="date_from" class="form-control form-control-sm" value="{{ f_date_from|default:'' }}">
@@ -22,52 +21,15 @@
                     <label class="small fw-bold text-muted">По дату</label>
                     <input type="date" name="date_to" class="form-control form-control-sm" value="{{ f_date_to|default:'' }}">
                 </div>
-                
-                <!-- Тип операції -->
-                <div class="col-12 col-md-4 col-lg-2">
-                    <label class="small fw-bold text-muted">Операція</label>
-                    <select name="type" class="form-select form-select-sm">
-                        <option value="">Всі операції</option>
-                        <option value="IN" {% if f_type == 'IN' %}selected{% endif %}>🟢 Надходження</option>
-                        <option value="OUT" {% if f_type == 'OUT' %}selected{% endif %}>🔴 Списання</option>
-                        <option value="TRANSFER" {% if f_type == 'TRANSFER' %}selected{% endif %}>🔵 Переміщення</option>
-                        <option value="LOSS" {% if f_type == 'LOSS' %}selected{% endif %}>⚫ Втрати</option>
-                    </select>
+                <div class="col-12 col-lg-3">
+                    <label class="small fw-bold text-muted">Матеріал (ID)</label>
+                    <input type="text" name="material" class="form-control form-control-sm" placeholder="ID..." value="{{ request.GET.material }}">
                 </div>
-
-                <!-- Матеріал -->
-                <div class="col-12 col-md-4 col-lg-2">
-                    <label class="small fw-bold text-muted">Матеріал</label>
-                    <select name="material" class="form-select form-select-sm">
-                        <option value="">Всі</option>
-                        {% for m in materials %}
-                            <option value="{{ m.id }}" {% if f_mat == m.id %}selected{% endif %}>{{ m.name }}</option>
-                        {% endfor %}
-                    </select>
+                <div class="col-12 col-lg-3">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Пошук</button>
                 </div>
-
-                <!-- Склад -->
-                <div class="col-12 col-md-4 col-lg-2">
-                    <label class="small fw-bold text-muted">Склад</label>
-                    <select name="warehouse" class="form-select form-select-sm">
-                        <option value="">Всі</option>
-                        {% for w in warehouses %}
-                            <option value="{{ w.id }}" {% if f_wh == w.id %}selected{% endif %}>{{ w.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Кнопки: на весь рядок на мобільному, авто-ширина на ПК -->
-                <div class="col-12 col-lg-2 d-flex gap-1">
-                    <button type="submit" class="btn btn-primary btn-sm flex-grow-1" title="Фільтрувати">
-                        <i class="bi bi-search"></i> <span class="d-lg-none">Пошук</span>
-                    </button>
-                    <button type="submit" name="export" value="excel" class="btn btn-success btn-sm flex-grow-1" title="Excel">
-                        <i class="bi bi-file-earmark-excel"></i> <span class="d-lg-none">Excel</span>
-                    </button>
-                    <a href="{% url 'movement_history' %}" class="btn btn-outline-secondary btn-sm flex-grow-1" title="Скинути">
-                        <i class="bi bi-x-lg"></i>
-                    </a>
+                <div class="col-12 col-lg-2">
+                    <a href="{% url 'movement_history' %}" class="btn btn-sm btn-outline-secondary w-100">Скинути</a>
                 </div>
             </form>
         </div>
@@ -76,81 +38,76 @@
     <!-- ТАБЛИЦЯ -->
     <div class="card shadow-sm border-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 text-nowrap" style="font-size: 0.9rem;">
-                <thead class="bg-dark text-white">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
                     <tr>
-                        <th>Дата</th>
-                        <th>Операція</th>
+                        <th class="ps-4">Дата</th>
+                        <th>Тип операції</th>
+                        <th>Склад</th>
                         <th>Матеріал</th>
-                        <th>Кількість</th>
-                        <th>Склад-Відправник</th>
-                        <th>Склад-Одержувач</th>
-                        <th>Хто виконав</th>
-                        <th>Підстава</th>
+                        <th class="text-center">Кількість</th>
+                        <th>Автор</th>
+                        <th>Деталі</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in history %}
-                    <tr>
-                        <!-- Дата -->
-                        <td>{{ row.date|date:"d.m.Y H:i" }}</td>
+                    <tr class="{% if row.transfer_group_id %}bg-primary bg-opacity-10{% endif %}">
+                        <td class="ps-4 text-nowrap">
+                            <div class="fw-bold">{{ row.date|date:"d.m.Y" }}</div>
+                            <small class="text-muted">{{ row.created_at|date:"H:i" }}</small>
+                        </td>
                         
-                        <!-- Тип операції -->
                         <td>
-                            {% if row.type_code == 'IN' %}
-                                <span class="badge bg-success bg-opacity-10 text-success border border-success">Надходження</span>
-                            {% elif row.type_code == 'OUT' %}
-                                <span class="badge bg-warning bg-opacity-10 text-dark border border-warning">Списання</span>
-                            {% elif row.type_code == 'TRANSFER' %}
-                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary">Переміщення</span>
-                            {% elif row.type_code == 'LOSS' %}
-                                <span class="badge bg-danger text-white">Втрати</span>
+                            {% if row.transfer_group_id %}
+                                {% if row.transaction_type == 'IN' %}
+                                    <span class="badge bg-info text-dark border border-info">ТРАНСФЕР (ВХ)</span>
+                                {% else %}
+                                    <span class="badge bg-primary border border-primary">ТРАНСФЕР (ВИХ)</span>
+                                {% endif %}
+                            {% elif row.transaction_type == 'IN' %}
+                                <span class="badge bg-success">ПРИХІД</span>
+                            {% elif row.transaction_type == 'OUT' %}
+                                <span class="badge bg-warning text-dark">ВИТРАТА</span>
+                            {% elif row.transaction_type == 'LOSS' %}
+                                <span class="badge bg-danger">ВТРАТА</span>
                             {% endif %}
                         </td>
 
-                        <!-- Матеріал (Drill-down) -->
-                        <td class="fw-bold">
-                            <a href="{% url 'material_detail' row.material_id %}" class="text-decoration-none text-dark">
-                                {{ row.material }}
-                            </a>
+                        <td>{{ row.warehouse.name }}</td>
+                        
+                        <td>
+                            <div class="fw-bold">{{ row.material.name }}</div>
+                            <small class="text-muted">{{ row.material.unit }}</small>
                         </td>
 
-                        <!-- Кількість -->
-                        <td>
-                            <span class="fw-bold fs-6">{{ row.quantity }}</span> <span class="text-muted small">{{ row.unit }}</span>
-                        </td>
-
-                        <!-- Відправник -->
-                        <td class="text-muted">{{ row.sender }}</td>
-
-                        <!-- Отримувач -->
-                        <td class="fw-bold text-dark">{{ row.receiver }}</td>
-
-                        <!-- Хто виконав -->
-                        <td>
-                            {% if row.user != "-" %}
-                                <div class="d-flex align-items-center">
-                                    <i class="bi bi-person-circle text-secondary me-1"></i> {{ row.user }}
-                                </div>
+                        <td class="text-center fw-bold">
+                            {% if row.transaction_type == 'IN' %}
+                                <span class="text-success">+{{ row.quantity|floatformat:2 }}</span>
                             {% else %}
-                                <span class="text-muted">-</span>
+                                <span class="text-danger">-{{ row.quantity|floatformat:2 }}</span>
                             {% endif %}
                         </td>
 
-                        <!-- Підстава (Drill-down) -->
                         <td>
-                            {% if row.order_id %}
-                                <a href="{% url 'manager_order_detail' row.order_id %}" class="badge bg-light text-primary border text-decoration-none border-primary">
-                                    <i class="bi bi-file-text me-1"></i> {{ row.basis }}
-                                </a>
+                            <div class="d-flex align-items-center small text-muted">
+                                <i class="bi bi-person-circle text-secondary me-1"></i> 
+                                {{ row.created_by.username|default:"-" }}
+                            </div>
+                        </td>
+
+                        <td>
+                            <!-- Логіка відображення контексту переміщення -->
+                            {% if row.transfer_group_id %}
+                                <span class="text-primary small"><i class="bi bi-arrow-left-right"></i> Переміщення</span>
                             {% else %}
-                                <small class="text-muted">{{ row.desc }}</small>
+                                <span class="text-muted small">{{ row.description|default:"-"|truncatechars:50 }}</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="7" class="text-center py-5 text-muted">
                             Руху матеріалів за цими параметрами не знайдено.
                         </td>
                     </tr>

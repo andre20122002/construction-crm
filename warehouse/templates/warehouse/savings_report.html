@@ -1,4 +1,5 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}Управлінський звіт: Економія{% endblock %}
 
@@ -26,44 +27,52 @@
     </div>
 
     <!-- KPI -->
-    <div class="card border-0 shadow-sm bg-success text-white mb-4">
-        <div class="card-body p-4 d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="opacity-75 text-uppercase">Віртуальний прибуток (Економія)</h5>
-                <div class="small opacity-50">Різниця між ціною закупки та поточною ринковою ціною</div>
-            </div>
-            <div class="display-4 fw-bold">
-                +{{ total_savings }} <span class="fs-4">₴</span>
+    <div class="row g-3 mb-4">
+        <div class="col-md-12">
+            <div class="card border-0 shadow-sm border-start border-4 border-success">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-muted small text-uppercase fw-bold">Загальна економія</div>
+                        <div class="fs-3 fw-bold {% if total_saved >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ total_saved|floatformat:2 }} ₴
+                        </div>
+                    </div>
+                    <i class="bi bi-piggy-bank fs-1 text-success opacity-25"></i>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- ТАБЛИЦЯ -->
     <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0 fw-bold">Деталізація закупівель</h5>
+            <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print"><i class="bi bi-printer"></i> Друк</button>
+        </div>
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 text-center">
+            <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="text-start ps-4">Матеріал / Об'єкт</th>
-                        <th>Дата списання</th>
-                        <th>Кількість</th>
-                        <th class="text-muted">Собівартість<br><small>(Середня)</small></th>
-                        <th class="text-primary">Ринкова ціна<br><small>(Поточна)</small></th>
-                        <th>Різниця<br>(за од.)</th>
+                        <th class="ps-4">Дата</th>
+                        <th>Матеріал</th>
+                        <th class="text-center">Кількість</th>
+                        <th>Ціна закупівлі</th>
+                        <th>Ринкова ціна</th>
+                        <th>Різниця (шт)</th>
                         <th class="text-end pe-4">Економія</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in report_data %}
                     <tr>
-                        <td class="text-start ps-4">
-                            <div class="fw-bold">{{ row.material }}</div>
-                            <small class="text-muted">{{ row.warehouse }}</small>
+                        <td class="ps-4">{{ row.date|date:"d.m.Y" }}</td>
+                        <td>
+                            <div class="fw-bold text-dark">{{ row.material }}</div>
                         </td>
-                        <td>{{ row.date|date:"d.m.Y" }}</td>
-                        <td class="fw-bold">{{ row.qty }} <small>{{ row.unit }}</small></td>
-                        
-                        <td class="text-muted">{{ row.cost_price }} ₴</td>
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border">{{ row.quantity|floatformat:2 }}</span>
+                        </td>
+                        <td>{{ row.price }} ₴</td>
                         <td class="text-primary fw-bold">{{ row.market_price }} ₴</td>
                         
                         <td>

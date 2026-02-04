@@ -19,7 +19,7 @@
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th>Заявка</th>
+                                <th>Заявка / Об'єкт</th>
                                 <th>Матеріал</th>
                                 <th>Очікувалось</th>
                                 <th>Затримка</th>
@@ -30,10 +30,21 @@
                             <tr>
                                 <td>
                                     <a href="{% url 'manager_order_detail' order.id %}" class="fw-bold text-decoration-none">#{{ order.id }}</a>
+                                    <div class="small text-muted"><i class="bi bi-building me-1"></i>{{ order.warehouse.name }}</div>
                                 </td>
                                 <td>
-                                    {{ order.material.name }}<br>
-                                    <small class="text-muted">{{ order.warehouse.name }}</small>
+                                    <!-- Канонічний вивід через items -->
+                                    {% for item in order.items.all|slice:":2" %}
+                                        <div class="text-truncate" style="max-width: 150px;" title="{{ item.material.name }}">
+                                            • {{ item.material.name }}
+                                        </div>
+                                    {% empty %}
+                                        <span class="text-muted small">-</span>
+                                    {% endfor %}
+                                    
+                                    {% if order.items.count > 2 %}
+                                        <small class="text-muted ps-2">+ ще {{ order.items.count|add:"-2" }}</small>
+                                    {% endif %}
                                 </td>
                                 <td class="text-danger fw-bold">
                                     {{ order.expected_date|date:"d.m" }}
@@ -85,7 +96,6 @@
                                     </button>
                                 </td>
                             </tr>
-                            <!-- Розкривний список (Drill-down) -->
                             <tr>
                                 <td colspan="4" class="p-0 border-0">
                                     <div class="collapse bg-white p-3 border-bottom" id="collapse{{ forloop.counter }}">
@@ -96,6 +106,8 @@
                                                 <span>{{ exp.material__name }}</span>
                                                 <span class="text-danger fw-bold">{{ exp.total|floatformat:0 }} ₴</span>
                                             </li>
+                                            {% empty %}
+                                                <li class="list-group-item text-muted">Деталі відсутні</li>
                                             {% endfor %}
                                         </ul>
                                     </div>
@@ -121,8 +133,8 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Заявка</th>
-                                <th>Матеріал</th>
-                                <th class="text-center">Не вистачило</th>
+                                <th>Матеріали</th>
+                                <th class="text-center">Різниця</th>
                                 <th class="text-end">Сума збитку</th>
                             </tr>
                         </thead>
@@ -130,9 +142,22 @@
                             {% for item in shortages %}
                             <tr>
                                 <td><a href="{% url 'manager_order_detail' item.order.id %}" class="text-dark">#{{ item.order.id }}</a></td>
-                                <td>{{ item.order.material.name }}</td>
+                                <td>
+                                    <!-- Безпечний вивід матеріалів (Канонічний) -->
+                                    {% for ord_item in item.order.items.all|slice:":2" %}
+                                        <div class="small text-truncate" style="max-width: 150px;" title="{{ ord_item.material.name }}">
+                                            • {{ ord_item.material.name }}
+                                        </div>
+                                    {% empty %}
+                                        <span class="small text-muted">-</span>
+                                    {% endfor %}
+                                    
+                                    {% if item.order.items.count > 2 %}
+                                        <small class="text-muted ps-2">+ ще {{ item.order.items.count|add:"-2" }}</small>
+                                    {% endif %}
+                                </td>
                                 <td class="text-center text-danger fw-bold">
-                                    -{{ item.diff }} {{ item.order.material.unit }}
+                                    -{{ item.diff }}
                                 </td>
                                 <td class="text-end">{{ item.sum }} ₴</td>
                             </tr>

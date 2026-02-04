@@ -1,4 +1,5 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}План закупівель{% endblock %}
 
@@ -22,82 +23,79 @@
                     <button type="submit" class="btn btn-primary w-100"><i class="bi bi-filter"></i> Показати</button>
                     <a href="{% url 'planning_report' %}" class="btn btn-outline-secondary" title="Скинути"><i class="bi bi-x-lg"></i></a>
                 </div>
-                <div class="col-md-3 text-end">
-                    <button type="submit" name="export" value="excel" class="btn btn-success text-white w-100">
-                        <i class="bi bi-file-earmark-excel"></i> Завантажити Excel
-                    </button>
-                </div>
             </form>
         </div>
     </div>
 
     <!-- ТАБЛИЦЯ -->
     <div class="card shadow-sm border-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-dark text-white">
-                    <tr>
-                        <th>Об'єкт / Проект</th>
-                        <th>Матеріал</th>
-                        <th class="text-center">Кількість</th>
-                        <th>Орієнтовна дата</th>
-                        <th>Відповідальний</th>
-                        <th class="text-center">Стан</th>
-                        <th class="text-end">Дії</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in report_data %}
-                    <tr>
-                        <td class="fw-bold">{{ row.warehouse }}</td>
-                        <td>
-                            {{ row.material }}
-                            {% if row.order.note %}
-                                <br><small class="text-muted fst-italic">{{ row.order.note|truncatechars:30 }}</small>
-                            {% endif %}
-                        </td>
-                        <td class="text-center">
-                            <span class="fs-6 fw-bold">{{ row.quantity }}</span> <small class="text-muted">{{ row.unit }}</small>
-                        </td>
-                        <td>
-                            {% if row.expected_date %}
-                                {{ row.expected_date|date:"d.m.Y" }}
-                                <!-- Підсвітка якщо прострочено -->
-                                {% now "Y-m-d" as todays_date %}
-                                {% if row.expected_date|date:"Y-m-d" < todays_date and row.order.status != 'in_transit' %}
-                                    <span class="badge bg-danger ms-1">!</span>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Дата потреби</th>
+                            <th>Заявка</th>
+                            <th>Склад</th>
+                            <th>Пріоритет</th>
+                            <th>Відповідальний</th>
+                            <th class="text-center">Статус</th>
+                            <th class="text-end pe-4">Дії</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report_data %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold text-dark">{{ row.date_needed|date:"d.m.Y" }}</div>
+                                <small class="text-muted">{{ row.date_needed|timeuntil }}</small>
+                            </td>
+                            <td>
+                                <span class="fw-bold">#{{ row.order.id }}</span>
+                                {% if row.order.note %}
+                                    <i class="bi bi-info-circle text-muted ms-1" title="{{ row.order.note }}"></i>
                                 {% endif %}
-                            {% else %}
-                                <span class="text-muted">Не вказано</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-2 border" style="width: 30px; height: 30px;">
-                                    <i class="bi bi-person text-secondary"></i>
+                            </td>
+                            <td>{{ row.order.warehouse.name }}</td>
+                            <td>
+                                {% if row.order.priority == 'critical' %}
+                                    <span class="badge bg-danger">КРИТИЧНИЙ 🔥</span>
+                                {% elif row.order.priority == 'high' %}
+                                    <span class="badge bg-warning text-dark">Високий</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border">{{ row.order.get_priority_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-2 border" style="width: 30px; height: 30px;">
+                                        <i class="bi bi-person text-secondary"></i>
+                                    </div>
+                                    {{ row.responsible }}
                                 </div>
-                                {{ row.responsible }}
-                            </div>
-                        </td>
-                        <td class="text-center">
-                            <span class="badge bg-{{ row.status_color }} border">{{ row.status_label }}</span>
-                        </td>
-                        <td class="text-end">
-                            <a href="{% url 'manager_order_detail' row.order.id %}" class="btn btn-sm btn-outline-dark" title="Деталі">
-                                <i class="bi bi-arrow-right"></i>
-                            </a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
-                            <i class="bi bi-calendar-x fs-1 d-block mb-2 opacity-50"></i>
-                            Запланованих закупівель на цей період немає.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ row.status_color }} border bg-opacity-25 text-{{ row.status_color }}">
+                                    {{ row.status_label }}
+                                </span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{% url 'manager_order_detail' row.order.id %}" class="btn btn-sm btn-outline-dark" title="Деталі">
+                                    <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="bi bi-calendar-x fs-1 d-block mb-2 opacity-50"></i>
+                                Запланованих закупівель на цей період немає.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

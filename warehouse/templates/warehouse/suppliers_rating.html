@@ -1,4 +1,5 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}Топ постачальників{% endblock %}
 
@@ -22,7 +23,7 @@
                     <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Аналізувати</button>
                 </div>
                 <div class="col-md-3 text-end">
-                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-secondary btn-sm">Скинути фільтри</a>
+                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-secondary w-100">Скинути</a>
                 </div>
             </form>
         </div>
@@ -30,44 +31,32 @@
 
     <!-- ТАБЛИЦЯ -->
     <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0 py-3">
+            <h5 class="mb-0 fw-bold">Список постачальників</h5>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
-                <thead class="bg-dark text-white">
+                <thead class="table-light">
                     <tr>
-                        <th class="ps-4">Постачальник</th>
-                        <th>Основні матеріали</th>
-                        <th class="text-center">Кількість замовлень</th>
-                        <th class="text-end">Сума закупівель</th>
-                        <th class="text-center">Сер. термін (днів)</th>
-                        <th class="text-center">Надійність</th>
+                        <th class="ps-4">Назва</th>
+                        <th>Контакт</th>
+                        <th class="text-center">Замовлень</th>
+                        <th style="width: 30%;">Надійність</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in rating_data %}
+                    {% for row in report_data %}
                     <tr>
-                        <td class="ps-4">
-                            <div class="fw-bold fs-5">{{ row.supplier.name }}</div>
-                            <div class="small text-muted"><i class="bi bi-person"></i> {{ row.supplier.contact_person }} | {{ row.supplier.phone }}</div>
-                        </td>
-                        <td class="text-muted small">
-                            {{ row.materials_list|default:"Не вказано" }}...
-                        </td>
-                        <td class="text-center fw-bold fs-5">
-                            {{ row.orders_count }}
-                        </td>
-                        <td class="text-end text-success fw-bold">
-                            {{ row.total_spent|floatformat:2 }} ₴
-                        </td>
+                        <td class="ps-4 fw-bold text-dark">{{ row.name }}</td>
+                        <td class="text-muted small">{{ row.contact }}</td>
                         <td class="text-center">
-                            <i class="bi bi-clock-history text-secondary me-1"></i> {{ row.avg_delivery }}
+                            <span class="badge bg-light text-dark border">{{ row.orders_count }}</span>
                         </td>
-                        <td class="text-center">
-                            <div class="d-flex align-items-center justify-content-center flex-column">
-                                <span class="badge bg-{{ row.rel_class }} rounded-pill" style="font-size: 0.9em;">
-                                    {{ row.reliability }}%
-                                </span>
-                                <div class="progress w-75 mt-1" style="height: 4px;">
-                                    <!-- Використовуємо data-width, щоб уникнути помилок валідації CSS в редакторі -->
+                        <td class="pe-4">
+                            <div class="d-flex align-items-center">
+                                <span class="small fw-bold me-2" style="min-width: 40px;">{{ row.reliability }}%</span>
+                                <div class="progress flex-grow-1" style="height: 8px;">
+                                    <!-- data-width використовується JS для встановлення ширини -->
                                     <div class="progress-bar bg-{{ row.rel_class }}" role="progressbar" data-width="{{ row.reliability }}"></div>
                                 </div>
                             </div>
@@ -92,14 +81,14 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Логіка графіків та прогрес-барів -->
+<script src="{% static 'warehouse/js/suppliers_charts.js' %}"></script>
+
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Ініціалізація прогрес-барів через JS для уникнення проблем з локалізацією (коми) та валідацією
-        document.querySelectorAll('.progress-bar[data-width]').forEach(bar => {
-            // Замінюємо кому на крапку, якщо Django локалізував число
-            let width = bar.getAttribute('data-width').replace(',', '.');
-            bar.style.width = width + '%';
-        });
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.SuppliersCharts) {
+            window.SuppliersCharts.init();
+        }
     });
 </script>
 {% endblock %}

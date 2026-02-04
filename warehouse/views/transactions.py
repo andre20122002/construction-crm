@@ -1,195 +1,367 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
-from django.db.models import Sum, Case, When, F, DecimalField
+from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
-from django.db import transaction as db_transaction  # <--- Перейменовано для уникнення конфліктів
-from ..models import Transaction, Order, Warehouse, Material
+from django.core.exceptions import ValidationError
+from django.db.models import Sum, Case, When, F, DecimalField, Q
+from django.utils import timezone
+from django import forms
+from decimal import Decimal, ROUND_HALF_UP
+
+from ..models import Transaction, Order, Warehouse, Material, ConstructionStage 
 from ..forms import TransactionForm
-from .utils import get_user_warehouses, check_access, get_stock_json, get_barcode_json, get_warehouse_balance, log_audit
+from .utils import (
+    get_user_warehouses, 
+    check_access, 
+    get_warehouse_balance, 
+    log_audit, 
+    get_stock_json,
+    enforce_warehouse_access_or_404,
+    get_allowed_warehouses,
+    restrict_warehouses_qs
+)
+from ..services import inventory
+# Імпортуємо виняток для обробки помилок залишків
+from ..services.inventory import InsufficientStockError
 
-@login_required
-def add_transaction(request):
-    if request.method == 'POST':
-        form = TransactionForm(request.POST, request.FILES)
-        if form.is_valid():
-            obj = form.save(commit=False)
-            if not check_access(request.user, obj.warehouse): return HttpResponse("⛔", 403)
-            
-            obj.created_by = request.user 
-            
-            if not request.user.is_staff and not obj.transaction_type:
-                obj.transaction_type = 'OUT'
-            
-            if obj.transaction_type in ['OUT', 'LOSS'] and obj.price == 0:
-                obj.price = obj.material.current_avg_price
-            
-            obj.save()
-            
-            action_name = "Списано на роботи" if obj.transaction_type == 'OUT' else "Зафіксовано втрату"
-            messages.success(request, f"📉 {action_name}: {obj.material.name} (-{obj.quantity} {obj.material.unit})")
-            
-            audit_action = 'WRITEOFF' if obj.transaction_type == 'LOSS' else 'UPDATE'
-            log_audit(
-                request, 
-                action_type=audit_action, 
-                obj=obj, 
-                new_val=f"{action_name}: {obj.quantity} {obj.material.unit}. Причина: {obj.description}"
-            )
-            
-            return redirect('index')
-    else:
-        form = TransactionForm()
-        form.fields['warehouse'].queryset = get_user_warehouses(request.user)
-        
-    return render(request, 'warehouse/transaction_form.html', {
-        'form': form, 'stock_json': get_stock_json(), 'barcode_json': get_barcode_json()
-    })
-
-@login_required
-def confirm_receipt(request, pk):
-    # Завантажуємо заявку разом із товарами
-    order = get_object_or_404(Order.objects.prefetch_related('items__material'), pk=pk)
-    
-    if not check_access(request.user, order.warehouse): 
-        return HttpResponse("⛔ Немає доступу", 403)
-
-    if request.method == 'POST':
-        action = request.POST.get('action') 
-        
-        # --- ВІДХИЛЕННЯ ---
-        if action == 'reject':
-            reject_reason = request.POST.get('reject_reason', 'Відхилено прорабом')
-            
-            # Зберігаємо фото доказу, якщо модель це підтримує
-            if 'proof_photo' in request.FILES and hasattr(order, 'proof_photo'):
-                order.proof_photo = request.FILES['proof_photo']
-            
-            order.status = 'rejected'
-            order.note = f"{order.note} | ВІДХИЛЕНО: {reject_reason}"
-            order.log_change(request.user, f"Відхилив: {reject_reason}")
-            order.save()
-            
-            log_audit(request, 'REJECT', order, new_val=f"Відхилено при прийомі. Причина: {reject_reason}")
-            
-            messages.warning(request, f"🚫 Поставку відхилено.")
-            return redirect('index')
-
-        # --- ПРИЙОМ (CONFIRM) ---
-        with db_transaction.atomic():
-            # Отримуємо фото з форми
-            proof_photo = request.FILES.get('proof_photo')
-            
-            # Якщо в моделі є поле proof_photo, зберігаємо і туди
-            if proof_photo and hasattr(order, 'proof_photo'):
-                order.proof_photo = proof_photo
-            
-            # Проходимо по кожному товару в заявці
-            for item in order.items.all():
-                input_name = f"qty_{item.id}"
-                raw_qty = request.POST.get(input_name, str(item.quantity))
-                
-                try:
-                    # Замінюємо кому на крапку і конвертуємо
-                    real_qty = float(raw_qty.replace(',', '.'))
-                    if real_qty < 0: real_qty = 0
-                except (ValueError, TypeError):
-                    real_qty = float(item.quantity) # Якщо помилка, беремо план
-
-                # Оновлюємо фактичну кількість
-                item.quantity_fact = real_qty
-                item.save()
-
-                # Визначаємо ціну
-                price = item.supplier_price or order.supplier_price or item.material.current_avg_price
-
-                # Створюємо транзакцію приходу, використовуючи фото з змінної
-                if real_qty > 0:
-                    Transaction.objects.create(
-                        transaction_type='IN', 
-                        warehouse=order.warehouse, 
-                        material=item.material,
-                        quantity=real_qty, 
-                        price=price, 
-                        description=f"Прийом заявки #{order.id}", 
-                        order=order, 
-                        photo=proof_photo,  # <-- Використовуємо змінну proof_photo напряму
-                        created_by=request.user
-                    )
-            
-            order.status = 'completed'
-            order.log_change(request.user, "Прийняв поставку")
-            order.save()
-            
-            log_audit(request, 'UPDATE', order, new_val="Поставка прийнята (Completed)")
-
-        messages.success(request, f"✅ Поставку успішно оприбутковано!")
-        return redirect('index')
-
-    return render(request, 'warehouse/confirm_receipt.html', {'order': order})
+# ==============================================================================
+# ДЕТАЛІ СКЛАДУ (WAREHOUSE DETAIL)
+# ==============================================================================
 
 @login_required
 def warehouse_detail(request, pk):
+    """
+    Сторінка конкретного складу.
+    Відображає:
+    1. Поточний баланс (Залишки).
+    2. Історію транзакцій з фільтрами.
+    """
     wh = get_object_or_404(Warehouse, pk=pk)
-    if not check_access(request.user, wh): return HttpResponse("⛔", 403)
     
-    balance = get_warehouse_balance(wh)
-    total_val = sum(item['total_sum'] for item in balance)
+    # Перевірка доступу (використовуємо нову функцію, яка підніме 404, якщо немає доступу)
+    enforce_warehouse_access_or_404(request.user, wh)
 
-    transactions = Transaction.objects.filter(warehouse=wh).select_related('material', 'order').order_by('-created_at')
+    # 1. Отримуємо баланс (словник {Material: quantity})
+    balance_map = get_warehouse_balance(wh)
     
-    f_type = request.GET.get('type')
-    f_material = request.GET.get('material')
-    f_date_from = request.GET.get('date_from')
-    f_date_to = request.GET.get('date_to')
+    # Формуємо список для шаблону та рахуємо загальну вартість
+    balance_list = []
+    total_value = Decimal("0.00")
+    
+    for mat, qty in balance_map.items():
+        # Пропускаємо нульові залишки, якщо це не критично
+        if qty != 0:
+            # Розрахунок вартості позиції (Decimal * Decimal)
+            # qty вже Decimal завдяки оновленому get_warehouse_balance
+            # mat.current_avg_price теж Decimal з моделі
+            val = (qty * mat.current_avg_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            total_value += val
+            
+            # Визначення статусу (критичний залишок чи ні)
+            status = 'ok'
+            # Перевіряємо, чи є мін. ліміт і чи поточна кількість менша/рівна йому
+            limit = getattr(mat, 'min_limit', None) or getattr(mat, 'min_stock', None)
+            
+            if limit and qty <= limit:
+                status = 'critical'
+            
+            balance_list.append({
+                'id': mat.id,
+                'name': mat.name,
+                'unit': mat.unit,
+                'quantity': qty,
+                'avg_price': mat.current_avg_price, # Додаємо про всяк випадок для відображення
+                'total_sum': val,                   # Додаємо для відображення суми по рядку
+                'status': status,
+                # Зберігаємо посилання на об'єкт матеріалу для сумісності з шаблонами
+                'material': mat 
+            })
+            
+    # Сортуємо залишки по назві матеріалу
+    balance_list.sort(key=lambda x: x['name'])
 
-    if f_type: transactions = transactions.filter(transaction_type=f_type)
-    if f_material: transactions = transactions.filter(material_id=f_material)
-    if f_date_from: transactions = transactions.filter(created_at__date__gte=f_date_from)
-    if f_date_to: transactions = transactions.filter(created_at__date__lte=f_date_to)
+    # 2. Історія транзакцій
+    transactions = Transaction.objects.filter(warehouse=wh).select_related('material', 'created_by', 'order').order_by('-date', '-created_at')
+    
+    # Оптимізація фільтра матеріалів: показуємо тільки ті матеріали, які фігурують у транзакціях цього складу
+    material_ids = transactions.values_list('material_id', flat=True).distinct()
+    available_materials = Material.objects.filter(id__in=material_ids).order_by('name')
 
-    if not any([f_type, f_material, f_date_from, f_date_to]): transactions = transactions[:50]
-    all_materials = Material.objects.all().order_by('name')
+    # Фільтрація
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    t_type = request.GET.get('type')
+    material_id = request.GET.get('material')
+    
+    if date_from: transactions = transactions.filter(date__gte=date_from)
+    if date_to: transactions = transactions.filter(date__lte=date_to)
+    
+    # Логіка фільтрації за типом
+    if t_type:
+        # Підтримка 'TRANSFER' для backward compatibility, але основний 'MOVE'
+        if t_type == 'MOVE' or t_type == 'TRANSFER':
+            # Якщо користувач хоче бачити переміщення - шукаємо записи з group_id
+            transactions = transactions.filter(transfer_group_id__isnull=False)
+        else:
+            # Інакше фільтруємо за прямим типом (IN, OUT, LOSS)
+            transactions = transactions.filter(transaction_type=t_type)
+            
+    if material_id: transactions = transactions.filter(material_id=material_id)
 
     return render(request, 'warehouse/warehouse_detail.html', {
-        'warehouse': wh, 'balance_list': balance, 'transactions': transactions, 
-        'total_value': round(total_val, 2), 'all_materials': all_materials, 
-        'filter_type': f_type, 'filter_material': int(f_material) if f_material else None,
-        'filter_date_from': f_date_from, 'filter_date_to': f_date_to,
+        'warehouse': wh,
+        'balance_list': balance_list, # Передаємо оновлений список
+        'stock_list': balance_list,   # Alias для сумісності зі старими шаблонами
+        'transactions': transactions[:100], # Ліміт 100 останніх
+        'total_value': total_value,
+        'materials': available_materials, # Оптимізований список матеріалів для фільтру
+        'f_date_from': date_from,
+        'f_date_to': date_to,
+        'f_type': t_type,
+        'f_material': int(material_id) if material_id else '',
+        'page_title': f"{wh.name} - Деталі"
     })
 
-@login_required
-def material_list(request):
-    materials = Material.objects.all().order_by('name')
-    for mat in materials:
-        mat.total_stock = Transaction.objects.filter(material=mat).aggregate(
-            total=Sum(Case(
-                When(transaction_type='IN', then=F('quantity')),
-                When(transaction_type__in=['OUT', 'TRANSFER', 'LOSS'], then=0 - F('quantity')),
-                default=0, output_field=DecimalField()
-            ))
-        )['total'] or 0
-        mat.current_avg_price = round(mat.current_avg_price, 2)
-    return render(request, 'warehouse/material_list.html', {'materials': materials})
 
-@login_required
-def material_detail(request, pk):
-    mat = get_object_or_404(Material, pk=pk)
-    trans = Transaction.objects.filter(material=mat).order_by('-created_at')[:50]
-    warehouses_stock = []
-    total_qty = 0
-    for wh in Warehouse.objects.all():
-        bal = get_warehouse_balance(wh, mat.id)
-        if bal:
-            qty = bal[0]['quantity']; warehouses_stock.append({'warehouse': wh, 'quantity': qty}); total_qty += qty
-    return render(request, 'warehouse/material_detail.html', {
-        'material': mat, 'transactions': trans, 'warehouses_stock': warehouses_stock,
-        'total_quantity': total_qty, 'total_value': round(total_qty * mat.current_avg_price, 2)
-    })
+# ==============================================================================
+# ДЕТАЛІ ТРАНЗАКЦІЇ
+# ==============================================================================
 
 @login_required
 def transaction_detail(request, pk):
+    """
+    Детальний перегляд однієї транзакції.
+    """
     trans = get_object_or_404(Transaction, pk=pk)
-    if not check_access(request.user, trans.warehouse): return HttpResponse("⛔", 403)
-    total_sum = round(trans.quantity * trans.price, 2)
-    return render(request, 'warehouse/transaction_detail.html', {'trans': trans, 'total_sum': total_sum})
+    
+    # Перевірка доступу до складу транзакції
+    enforce_warehouse_access_or_404(request.user, trans.warehouse)
+    
+    # Розрахунок загальної суми транзакції (Decimal)
+    price = trans.price or Decimal("0.00")
+    total_sum = (trans.quantity * price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    
+    # Прапорець, чи це переміщення
+    is_transfer = bool(trans.transfer_group_id)
+         
+    return render(request, 'warehouse/transaction_detail.html', {
+        'trans': trans,
+        'total_sum': total_sum,
+        'is_transfer': is_transfer
+    })
+
+
+# ==============================================================================
+# ДОДАВАННЯ ТРАНЗАКЦІЇ (РУЧНЕ)
+# ==============================================================================
+
+@login_required
+def add_transaction(request):
+    """
+    Ручне створення запису: Прихід, Списання (Роботи), Втрати.
+    НЕ створює переміщення (для цього є окрема в'юха).
+    """
+    if request.method == 'POST':
+        # Створюємо копію POST даних для модифікації
+        post_data = request.POST.copy()
+        
+        # Fail-safe для дати: якщо не вказана або порожня, ставимо сьогоднішню
+        if not post_data.get('date'):
+            post_data['date'] = timezone.localdate().isoformat()
+            
+        # Fail-safe для ціни: якщо не вказана або порожня, ставимо 0.00
+        if not post_data.get('price'):
+            post_data['price'] = '0.00'
+            
+        form = TransactionForm(post_data, request.FILES)
+        
+        # Видалено обмеження queryset тут для POST, щоб form.is_valid() пройшов, 
+        # навіть якщо користувач маніпулював ID або форма рендериться заново.
+        # Перевірка доступу буде виконана нижче через enforce_warehouse_access_or_404.
+        
+        if form.is_valid():
+            data = form.cleaned_data
+            wh = data['warehouse']
+            
+            # Перевірка доступу до складу
+            # Це викликає 404, якщо користувач не має прав на цей склад
+            enforce_warehouse_access_or_404(request.user, wh)
+
+            try:
+                # Використовуємо inventory services замість ручного створення
+                t_type = data['transaction_type']
+                
+                # Отримуємо дату та ціну з post_data (бо їх може не бути в form.cleaned_data, якщо полів немає у формі)
+                tx_date = post_data.get('date')
+                tx_price = post_data.get('price')
+                
+                if t_type == 'IN':
+                    inventory.create_incoming(
+                        material=data['material'],
+                        warehouse=wh,
+                        quantity=data['quantity'],
+                        user=request.user,
+                        price=tx_price,
+                        description=data['description'],
+                        date=tx_date,
+                        photo=data.get('photo')
+                    )
+                    action_msg = "✅ Прихід успішно створено!"
+                    
+                elif t_type in ['OUT', 'LOSS']:
+                    # Спроба створити списання з перевіркою залишків
+                    inventory.create_writeoff(
+                        transaction_type=t_type,
+                        material=data['material'],
+                        warehouse=wh,
+                        quantity=data['quantity'],
+                        user=request.user,
+                        description=data['description'],
+                        date=tx_date,
+                        stage=data.get('stage'), # Тільки для OUT
+                        photo=data.get('photo')
+                    )
+                    action_msg = f"✅ {'Списання' if t_type == 'OUT' else 'Втрати'} успішно проведено!"
+                else:
+                    # Якщо раптом прилетів TRANSFER або щось інше
+                    raise ValidationError("Невірний тип транзакції для цієї форми.")
+                
+                log_audit(request, 'CREATE', new_val=f"{t_type}: {data['material'].name} x {data['quantity']} on {wh.name}")
+                messages.success(request, action_msg)
+                return redirect('warehouse_detail', pk=wh.id)
+                
+            except InsufficientStockError as e:
+                # Обробка помилки нестачі товару
+                messages.error(request, str(e))
+                # Повертаємо користувача на форму з даними
+                return render(request, 'warehouse/transaction_form.html', {'form': form})
+            except ValidationError as e:
+                messages.error(request, str(e))
+            except Exception as e:
+                messages.error(request, f"Помилка: {e}")
+    else:
+        # GET request
+        form = TransactionForm()
+        # Передзаповнення з URL параметрів (наприклад, з QR-коду)
+        t_type = request.GET.get('type')
+        
+        if t_type: 
+            form.fields['transaction_type'].initial = t_type
+            
+        # Фільтруємо склади у формі (ТІЛЬКИ ДОЗВОЛЕНІ) - тільки для GET, для відображення у dropdown
+        form.fields['warehouse'].queryset = get_allowed_warehouses(request.user)
+        
+        # Активний склад з сесії
+        active_wh_id = request.session.get('active_warehouse_id')
+        if active_wh_id:
+            # Перевіряємо, чи є доступ до активного складу
+            if get_allowed_warehouses(request.user).filter(pk=active_wh_id).exists():
+                form.fields['warehouse'].initial = active_wh_id
+
+    return render(request, 'warehouse/transaction_form.html', {'form': form})
+
+
+# ==============================================================================
+# ПЕРЕМІЩЕННЯ (TRANSFER)
+# ==============================================================================
+
+class TransferForm(forms.Form):
+    source_warehouse = forms.ModelChoiceField(queryset=Warehouse.objects.none(), label="Зі складу")
+    # ТІЛЬКИ ДОЗВОЛЕНІ СКЛАДИ ДЛЯ ПРИЗНАЧЕННЯ (по замовчуванню none, заповниться у view)
+    target_warehouse = forms.ModelChoiceField(queryset=Warehouse.objects.none(), label="На склад")
+    material = forms.ModelChoiceField(queryset=Material.objects.all(), label="Матеріал")
+    
+    # DECIMAL UPDATE
+    quantity = forms.DecimalField(
+        min_value=Decimal("0.001"), 
+        max_digits=14, 
+        decimal_places=3, 
+        label="Кількість",
+        widget=forms.NumberInput(attrs={'step': '0.001'})
+    )
+    
+    date = forms.DateField(initial=timezone.now().date, widget=forms.DateInput(attrs={'type': 'date'}), label="Дата")
+    description = forms.CharField(widget=forms.Textarea(attrs={'rows': 2}), required=False, label="Коментар")
+
+@login_required
+def add_transfer(request):
+    """
+    Створення переміщення між складами.
+    Використовує inventory.create_transfer (створює OUT + IN).
+    """
+    allowed_whs = get_allowed_warehouses(request.user)
+    
+    if request.method == 'POST':
+        form = TransferForm(request.POST)
+        # Підставляємо дозволені склади для валідації
+        form.fields['source_warehouse'].queryset = allowed_whs
+        # Для цільового складу логіка може відрізнятись:
+        # Можна дозволити відправляти на будь-який склад (Warehouse.objects.all()) або тільки на свої.
+        # Зазвичай відправляти можна куди завгодно, але бачити залишки - тільки свої.
+        # Проте за завданням "звичайний користувач не повинен бачити чужі склади в dropdown".
+        # Тому обмежуємо і цільовий склад.
+        form.fields['target_warehouse'].queryset = allowed_whs
+        
+        if form.is_valid():
+            data = form.cleaned_data
+            source = data['source_warehouse']
+            target = data['target_warehouse']
+            
+            # Додаткова перевірка доступу до джерела (хоча queryset вже фільтрує)
+            enforce_warehouse_access_or_404(request.user, source)
+            
+            if source == target:
+                messages.error(request, "Склад-джерело і призначення не можуть співпадати.")
+            else:
+                try:
+                    inventory.create_transfer(
+                        user=request.user,
+                        material=data['material'],
+                        source_warehouse=source,
+                        target_warehouse=target,
+                        quantity=data['quantity'], # Вже Decimal
+                        description=data['description'],
+                        date=data['date']
+                    )
+                    
+                    log_audit(request, 'CREATE', new_val=f"Transfer: {data['material']} {source}->{target}")
+                    messages.success(request, "✅ Переміщення успішно виконано!")
+                    return redirect('transfer_journal')
+                
+                except InsufficientStockError as e:
+                    # Обробка помилки нестачі товару при переміщенні
+                    messages.error(request, str(e))
+                    # Повертаємось на сторінку (не редірект), щоб зберегти введені дані (на жаль, для Form дані не зберігаються автоматично при render, але повідомлення буде видно)
+                    # Щоб зберегти дані, треба передати form у render
+                    # form вже містить POST дані
+                    
+                    # Також треба не забути про stock_json для JS
+                    stock_json = get_stock_json(request.user)
+                    return render(request, 'warehouse/transfer_form.html', {
+                        'form': form,
+                        'stock_json': stock_json,
+                        'page_title': 'Переміщення матеріалів'
+                    })
+                    
+                except ValidationError as e:
+                    messages.error(request, str(e))
+                except Exception as e:
+                    messages.error(request, f"Помилка: {e}")
+    else:
+        form = TransferForm()
+        # Фільтруємо склади (ТІЛЬКИ ДОЗВОЛЕНІ)
+        form.fields['source_warehouse'].queryset = allowed_whs
+        form.fields['target_warehouse'].queryset = allowed_whs
+        
+    # Словник залишків для JS (щоб показувати на льоту доступність)
+    # get_stock_json вже user-aware завдяки змінам в utils.py
+    stock_json = get_stock_json(request.user)
+
+    return render(request, 'warehouse/transfer_form.html', {
+        'form': form,
+        'stock_json': stock_json,
+        'page_title': 'Переміщення матеріалів'
+    })
+
+# Alias for compatibility with warehouse/urls.py
+create_transfer_view = add_transfer

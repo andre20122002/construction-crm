@@ -1,4 +1,5 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}Порівняння об'єктів{% endblock %}
 
@@ -12,7 +13,12 @@
             📊 Бюджет vs Фактичні витрати
         </div>
         <div class="card-body">
-            <canvas id="comparisonChart" style="max-height: 400px;"></canvas>
+            <div style="height: 400px; position: relative;">
+                <canvas id="comparisonChart"></canvas>
+                <div class="text-center text-muted small d-none mt-5" data-empty-msg="comparison">
+                    Немає даних для порівняння
+                </div>
+            </div>
         </div>
     </div>
 
@@ -26,129 +32,62 @@
             <table class="table table-hover align-middle mb-0 text-center">
                 <thead class="bg-dark text-white">
                     <tr>
-                        <th class="text-start">Об'єкт</th>
-                        <th>МВО (Відповідальний)</th>
-                        <th>Загальний бюджет</th>
-                        <th>Витрачено (Факт)</th>
-                        <th>В роботі (Заявки)</th>
-                        <th>Залишок бюджету</th>
-                        <th>Прогноз (після заявок)</th>
-                        <th>Статус</th>
+                        <th class="text-start ps-4">Об'єкт</th>
+                        <th>Бюджет</th>
+                        <th>Витрачено</th>
+                        <th>% Використання</th>
+                        <th class="text-end pe-4">Залишок</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in report_data %}
+                    {% for row in data %}
                     <tr>
-                        <td class="text-start fw-bold">{{ row.name }}</td>
-                        <td class="small text-muted">{{ row.responsible }}</td>
-                        
-                        <!-- Бюджет -->
-                        <td class="fw-bold">{{ row.budget|floatformat:0 }} ₴</td>
-                        
-                        <!-- Витрачено -->
-                        <td class="text-danger fw-bold">-{{ row.spent|floatformat:0 }} ₴</td>
-                        
-                        <!-- В роботі -->
-                        <td class="text-warning small">-{{ row.active_commitments|floatformat:0 }} ₴</td>
-                        
-                        <!-- Залишок (фактичний) -->
-                        <td class="fw-bold {% if row.balance < 0 %}text-danger{% else %}text-success{% endif %}">
-                            {{ row.balance|floatformat:0 }} ₴
-                        </td>
-
-                        <!-- Прогноз -->
-                        <td class="fw-bold {% if row.forecast < 0 %}text-danger{% else %}text-primary{% endif %}">
-                            {{ row.forecast|floatformat:0 }} ₴
-                        </td>
-
-                        <!-- Статус -->
+                        <td class="text-start ps-4 fw-bold">{{ row.name }}</td>
+                        <td>{{ row.budget|floatformat:2 }} ₴</td>
+                        <td class="fw-bold text-danger">{{ row.spent|floatformat:2 }} ₴</td>
                         <td>
-                            {% if row.status == 'critical' %}
-                                <span class="badge bg-danger">ПЕРЕВИТРАТА!</span>
-                            {% elif row.status == 'warning' %}
-                                <span class="badge bg-warning text-dark">Критично</span>
-                            {% else %}
-                                <span class="badge bg-success">В нормі</span>
-                            {% endif %}
+                            <div class="d-flex align-items-center justify-content-center">
+                                <div class="progress flex-grow-1 me-2" style="height: 6px; max-width: 100px;">
+                                    <div class="progress-bar {% if row.percent > 100 %}bg-danger{% elif row.percent > 80 %}bg-warning{% else %}bg-success{% endif %}" 
+                                         role="progressbar" 
+                                         style="width: {{ row.percent }}%">
+                                    </div>
+                                </div>
+                                <small class="fw-bold">{{ row.percent|floatformat:0 }}%</small>
+                            </div>
+                        </td>
+                        <td class="text-end pe-4 fw-bold text-success">
+                            {{ row.diff|floatformat:2 }} ₴
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="8" class="py-4 text-muted">Об'єктів не знайдено</td></tr>
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">Склади не знайдені або у вас немає доступу.</td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        <div class="card-footer bg-light small text-muted">
-            * <b>В роботі</b> — сума активних заявок, які ще не списані.<br>
-            * <b>Прогноз</b> = Бюджет - Витрачено - В роботі. Показує реальний залишок коштів після виконання всіх поточних планів.
-        </div>
     </div>
 </div>
 
-<!-- DATA FOR JS -->
-<script id="chart-labels" type="application/json">{{ chart_labels|safe }}</script>
-<script id="chart-budget" type="application/json">{{ chart_budget|safe }}</script>
-<script id="chart-spent" type="application/json">{{ chart_spent|safe }}</script>
+<!-- DATA FOR CHARTS -->
+{{ data|json_script:"comparison-data" }}
 
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Підключаємо локальний Chart.js (vendor) -->
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+
+<!-- Логіка графіків -->
+<script src="{% static 'warehouse/js/objects_comparison_charts.js' %}"></script>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const labels = JSON.parse(document.getElementById('chart-labels').textContent);
-        const budget = JSON.parse(document.getElementById('chart-budget').textContent);
-        const spent = JSON.parse(document.getElementById('chart-spent').textContent);
-
-        new Chart(document.getElementById('comparisonChart'), {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Фактичні витрати',
-                        data: spent,
-                        backgroundColor: '#dc3545',
-                        borderRadius: 4,
-                        order: 1
-                    },
-                    {
-                        label: 'Бюджетний ліміт',
-                        data: budget,
-                        backgroundColor: '#198754',
-                        // Робимо бюджет трохи ширшим і прозорішим, щоб було видно накладання
-                        backgroundColor: 'rgba(25, 135, 84, 0.2)',
-                        borderColor: '#198754',
-                        borderWidth: 2,
-                        borderRadius: 4,
-                        type: 'bar', 
-                        barPercentage: 1.2, // Ширший стовпчик
-                        order: 2
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            afterBody: function(context) {
-                                // Додаємо розрахунок залишку в тултіп
-                                const idx = context[0].dataIndex;
-                                const b = budget[idx];
-                                const s = spent[idx];
-                                const diff = b - s;
-                                return `Залишок: ${diff.toFixed(2)} ₴`;
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        if (window.ObjectsComparisonCharts) {
+            window.ObjectsComparisonCharts.init();
+        }
     });
 </script>
 {% endblock %}

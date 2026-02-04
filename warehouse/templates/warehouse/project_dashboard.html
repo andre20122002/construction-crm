@@ -1,0 +1,162 @@
+{% extends 'warehouse/base.html' %}
+{% load static %}
+
+{% block title %}Дашборд Проекту{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-0">🏗️ Зведення по проекту</h3>
+            <span class="text-muted small">Оперативна аналітика для власника</span>
+        </div>
+        <div class="btn-group">
+             <a href="{% url 'concrete_analytics' %}" class="btn btn-outline-primary">
+                <i class="bi bi-bricks me-1"></i> Бетон (Детально)
+            </a>
+            <a href="{% url 'financial_report' %}" class="btn btn-outline-success">
+                <i class="bi bi-cash-stack me-1"></i> Фінанси
+            </a>
+        </div>
+    </div>
+
+    <!-- 1. ВЕРХНІ KPI (Гроші) -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 bg-primary text-white">
+                <div class="card-body">
+                    <div class="opacity-75 small text-uppercase fw-bold">Освоєно бюджету</div>
+                    <div class="fs-3 fw-bold">{{ total_spent|floatformat:0 }} ₴</div>
+                    <div class="mt-2 small opacity-50">
+                        <i class="bi bi-calendar-month me-1"></i> У цьому місяці: {{ spent_this_month|floatformat:0 }} ₴
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
+                <div class="card-body">
+                    <div class="text-danger small text-uppercase fw-bold">Критичні залишки</div>
+                    {% if critical_items %}
+                        <div class="fs-4 fw-bold text-dark">{{ critical_items|length }} позицій</div>
+                        <small class="text-muted">Потребують уваги постачання</small>
+                    {% else %}
+                        <div class="fs-4 fw-bold text-success">0</div>
+                        <small class="text-success">Все в нормі</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-muted small text-uppercase fw-bold">Останні події</div>
+                        <div class="fs-4 fw-bold">{{ recent_logs|length }}</div>
+                    </div>
+                    <i class="bi bi-activity fs-1 text-muted opacity-25"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        
+        <!-- 2. БЕТОНУВАННЯ (Графік + Таблиця) -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-0 fw-bold d-flex justify-content-between align-items-center">
+                    <span>📊 Прогрес бетонування</span>
+                    <a href="{% url 'concrete_analytics' %}" class="btn btn-sm btn-link text-decoration-none">Детальніше &rarr;</a>
+                </div>
+                <div class="card-body">
+                    <!-- Графік -->
+                    <div class="mb-4" style="height: 200px; position: relative;">
+                        <canvas id="concreteProgressChart"></canvas>
+                        <div class="text-center text-muted small d-none mt-5" data-empty-msg="concrete">Немає даних для графіка</div>
+                    </div>
+
+                    <!-- Таблиця -->
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Етап</th>
+                                    <th class="text-center">План</th>
+                                    <th class="text-center">Факт</th>
+                                    <th class="text-end">%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stage in concrete_stages %}
+                                <tr>
+                                    <td>{{ stage.name }}</td>
+                                    <td class="text-center text-muted">{{ stage.plan }}</td>
+                                    <td class="text-center fw-bold">{{ stage.fact }}</td>
+                                    <td class="text-end">
+                                        {% if stage.percent >= 100 %}
+                                            <span class="text-success fw-bold"><i class="bi bi-check-lg"></i> 100%</span>
+                                        {% else %}
+                                            <div class="progress" style="height: 6px; width: 60px; display: inline-flex;">
+                                                <div class="progress-bar" role="progressbar" style="width: {{ stage.percent }}%"></div>
+                                            </div>
+                                            <small class="ms-1">{{ stage.percent }}%</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr><td colspan="4" class="text-center py-3 text-muted">Дані відсутні. Імпортуйте кошторис.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. ОСТАННІ ПОДІЇ -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-0 fw-bold">
+                    🔔 Останні події на майданчику
+                </div>
+                <div class="list-group list-group-flush">
+                    {% for log in recent_logs %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1 small fw-bold">{{ log.title }}</h6>
+                            <small class="text-muted" style="font-size: 0.75rem;">{{ log.time|date:"d.m H:i" }}</small>
+                        </div>
+                        <p class="mb-1 small text-muted">{{ log.desc }}</p>
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-3 text-muted small">Подій немає</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DATA FOR CHARTS -->
+{{ concrete_stages|json_script:"concrete-stages-data" }}
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- Підключаємо локальний Chart.js (vendor) -->
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+
+<!-- Логіка графіків -->
+<script src="{% static 'warehouse/js/project_dashboard_charts.js' %}"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        if (window.ProjectDashboardCharts) {
+            window.ProjectDashboardCharts.init();
+        }
+    });
+</script>
+{% endblock %}

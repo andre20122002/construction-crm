@@ -4,94 +4,192 @@
 
 {% block extra_css %}
 <style>
-    /* Стилі для прораба */
-    body { background-color: #212529; color: #e9ecef; }
-    .search-box { background: #343a40; border: 1px solid #495057; color: white; }
-    .search-box:focus { background: #3b4249; color: white; border-color: #0d6efd; box-shadow: none; }
-    
-    .stock-card { 
-        background-color: #2c3034; 
-        border: 1px solid #495057; 
-        color: white;
-        transition: transform 0.1s;
+    /* Dark Theme Override for this page */
+    body {
+        background-color: #121212;
+        color: #e0e0e0;
     }
-    .stock-card:active { transform: scale(0.98); }
+
+    /* Stats Card */
+    .stats-card {
+        background-color: #1e1e1e;
+        border: 1px solid #333;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
+
+    /* Search Input */
+    .search-input {
+        background-color: #2c2c2c;
+        border: 1px solid #444;
+        color: #fff;
+        border-radius: 50px;
+        padding: 10px 20px;
+        transition: all 0.3s;
+    }
+    .search-input:focus {
+        background-color: #333;
+        border-color: #0d6efd;
+        color: #fff;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+    .search-input::placeholder { color: #888; }
+
+    /* Stock Card Styles */
+    .stock-card {
+        background-color: #1e1e1e;
+        border: 1px solid #333;
+        border-radius: 12px;
+        transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        position: relative;
+        overflow: hidden;
+    }
+    .stock-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+        border-color: #555;
+    }
+
+    /* Typography */
+    .item-name {
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: #fff;
+        margin-bottom: 4px;
+        line-height: 1.2;
+    }
+    .item-meta {
+        font-size: 0.85rem;
+        color: #aaa;
+    }
+
+    /* Quantity Display */
+    .qty-display {
+        font-weight: 700;
+        font-size: 1.6rem;
+        line-height: 1;
+    }
+    .qty-unit {
+        font-size: 0.9rem;
+        font-weight: normal;
+        color: #888;
+        margin-left: 2px;
+    }
+
+    /* Status Colors */
+    .status-ok { color: #2ecc71; } /* Emerald Green */
+    .status-low { color: #ff9f43; } /* Orange */
+    .status-crit { color: #e74c3c; } /* Red */
     
-    .quantity-badge {
-        font-size: 1.2rem;
-        font-weight: bold;
+    /* Low Stock Visual Cue */
+    .stock-card.low-stock {
+        border-left: 4px solid #ff9f43;
+    }
+    .stock-card.low-stock .card-body {
+        background: linear-gradient(90deg, rgba(255, 159, 67, 0.05) 0%, rgba(30, 30, 30, 0) 100%);
+    }
+
+    /* Critical Stock Visual Cue (Empty) */
+    .stock-card.crit-stock {
+        border-left: 4px solid #e74c3c;
+    }
+    
+    /* Action Button */
+    .btn-action {
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-action:hover {
+        background-color: #333;
+        border-color: #fff;
         color: #fff;
     }
-    
-    .unit-label { font-size: 0.8rem; color: #adb5bd; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-3 pb-5" style="max-width: 800px;">
+<div class="container-fluid mt-3 pb-5" style="max-width: 1000px;">
     
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h3 class="h4 fw-bold mb-0"><i class="bi bi-boxes me-2"></i> Мій Склад</h3>
-            <small class="text-muted">{{ warehouse.name|default:"Склад не вибрано" }}</small>
-        </div>
-        <div class="text-end">
-            <span class="badge bg-secondary">{{ total_items }} позицій</span>
-        </div>
-    </div>
-
-    <!-- Пошук -->
-    <div class="mb-4 position-relative">
-        <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
-        <input type="text" id="stockSearch" class="form-control form-control-lg search-box ps-5" placeholder="Знайти матеріал...">
-    </div>
-
-    <!-- Список -->
-    <div class="row g-3" id="stockGrid">
-        {% for item in stock %}
-        <div class="col-12 col-md-6 stock-item" data-name="{{ item.name|lower }}">
-            <div class="card stock-card shadow-sm h-100">
-                <div class="card-body d-flex justify-content-between align-items-center p-3">
-                    
-                    <!-- Назва -->
-                    <div class="pe-2">
-                        <h6 class="fw-bold mb-1">{{ item.name }}</h6>
-                        {% if item.min_limit > 0 and item.quantity <= item.min_limit %}
-                            <span class="badge bg-danger rounded-pill" style="font-size: 0.6em;">
-                                <i class="bi bi-exclamation-circle"></i> Закінчується
-                            </span>
-                        {% endif %}
-                    </div>
-
-                    <!-- Кількість -->
-                    <div class="text-end" style="min-width: 80px;">
-                        <div class="quantity-badge text-success">{{ item.quantity }}</div>
-                        <div class="unit-label">{{ item.unit }}</div>
-                    </div>
-
-                </div>
-                
-                <!-- Кнопка швидкого списання -->
-                <div class="card-footer bg-transparent border-top border-secondary p-1">
-                    <!-- Передаємо ID матеріалу в форму списання через GET параметр -->
-                    <a href="{% url 'add_transaction' %}?type=OUT&material={{ item.id }}" class="btn btn-sm btn-link text-decoration-none text-muted w-100">
-                        Списати <i class="bi bi-arrow-right ms-1"></i>
-                    </a>
-                </div>
+    <!-- Header & Stats -->
+    <div class="row g-3 mb-4 align-items-center">
+        <div class="col-12 col-md-6">
+            <h2 class="fw-bold mb-1 text-white">
+                <i class="bi bi-box2 me-2 text-primary"></i>
+                {% if warehouse %}{{ warehouse.name }}{% else %}Склад не вибрано{% endif %}
+            </h2>
+            <div class="text-muted small">
+                Позицій: <span class="text-white">{{ total_items }}</span> | Вартість: <span class="text-white">{{ total_value }} ₴</span>
             </div>
         </div>
-        {% empty %}
-        <div class="col-12 text-center py-5 text-muted">
-            <i class="bi bi-box2 fs-1 opacity-50 d-block mb-3"></i>
-            Склад порожній.
+        <div class="col-12 col-md-6">
+            <div class="position-relative">
+                <i class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
+                <input type="text" id="stockSearch" class="form-control search-input ps-5" placeholder="Знайти матеріал...">
+            </div>
         </div>
+    </div>
+
+    <!-- Stock Grid -->
+    <div class="row row-cols-1 row-cols-md-2 g-3" id="stockGrid">
+        {% for item in stock %}
+            <div class="col stock-item" data-name="{{ item.name|lower }}">
+                <div class="card h-100 stock-card {% if item.is_low_stock %}low-stock{% endif %}">
+                    <div class="card-body d-flex align-items-center justify-content-between p-3">
+                        
+                        <!-- Left: Info -->
+                        <div class="me-3 overflow-hidden">
+                            <div class="item-name text-truncate" title="{{ item.name }}">{{ item.name }}</div>
+                            <div class="item-meta d-flex align-items-center flex-wrap gap-2">
+                                <span>
+                                    {% if item.avg_price > 0 %}
+                                        {{ item.avg_price }} ₴/{{ item.unit }}
+                                    {% else %}
+                                        {{ item.unit }}
+                                    {% endif %}
+                                </span>
+                                
+                                {% if item.is_low_stock %}
+                                    <span class="badge bg-warning text-dark border border-warning" style="font-size: 0.7em;">
+                                        <i class="bi bi-exclamation-triangle-fill"></i> Закінчується
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Right: Qty & Action -->
+                        <div class="text-end d-flex flex-column align-items-end" style="min-width: 90px;">
+                            <div class="qty-display mb-2 {% if item.is_low_stock %}status-low{% else %}status-ok{% endif %}">
+                                {{ item.quantity|floatformat:2 }}<span class="qty-unit">{{ item.unit }}</span>
+                            </div>
+                            
+                            <a href="{% url 'add_transaction' %}?type=OUT&material={{ item.id }}" class="btn btn-sm btn-outline-light btn-action">
+                                <i class="bi bi-box-arrow-right me-1"></i> Списати
+                            </a>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <div class="col-12">
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-box2 fs-1 opacity-25 d-block mb-3"></i>
+                    <h4>Склад порожній</h4>
+                    <p>Тут відображатимуться матеріали, коли вони надійдуть на склад.</p>
+                </div>
+            </div>
         {% endfor %}
     </div>
     
+    <!-- No Results Placeholder (Hidden by default) -->
     <div id="noResults" class="text-center text-muted py-5" style="display: none;">
-        <i class="bi bi-search fs-1 opacity-50"></i>
-        <p class="mt-2">Нічого не знайдено</p>
+        <i class="bi bi-search fs-1 opacity-50 d-block mb-2"></i>
+        <p class="lead mb-3">Нічого не знайдено</p>
+        <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('stockSearch').value=''; document.getElementById('stockSearch').dispatchEvent(new Event('keyup'));">
+            Очистити пошук
+        </button>
     </div>
 
 </div>
@@ -99,27 +197,32 @@
 
 {% block extra_js %}
 <script>
-    // Живий пошук
-    document.getElementById('stockSearch').addEventListener('keyup', function(e) {
-        const term = e.target.value.toLowerCase();
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('stockSearch');
         const items = document.querySelectorAll('.stock-item');
-        let visibleCount = 0;
-
-        items.forEach(item => {
-            const name = item.getAttribute('data-name');
-            if (name.includes(term)) {
-                item.style.display = 'block';
-                visibleCount++;
-            } else {
-                item.style.display = 'none';
-            }
-        });
-
         const noResults = document.getElementById('noResults');
-        if (visibleCount === 0 && items.length > 0) {
-            noResults.style.display = 'block';
-        } else {
-            noResults.style.display = 'none';
+
+        if (searchInput) {
+            searchInput.addEventListener('keyup', function(e) {
+                const term = e.target.value.toLowerCase().trim();
+                let visibleCount = 0;
+
+                items.forEach(item => {
+                    const name = item.getAttribute('data-name');
+                    if (name.includes(term)) {
+                        item.style.display = ''; // Reset to default layout behavior
+                        visibleCount++;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+
+                if (visibleCount === 0 && items.length > 0) {
+                    noResults.style.display = 'block';
+                } else {
+                    noResults.style.display = 'none';
+                }
+            });
         }
     });
 </script>

@@ -1,289 +1,448 @@
+from django.core.paginator import Paginator
+from django.db import transaction
+from django.db.models import Q, Sum, F, Case, When, DecimalField
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
-from django.db.models import Sum, Case, When, F, DecimalField, Count
-from django.utils import timezone
 from django.contrib import messages
-from django.db import transaction
-from ..models import Order, OrderComment, Warehouse, Transaction, OrderItem, Supplier, SupplierPrice
-from .utils import log_audit
+from django.http import HttpResponseForbidden, HttpResponseBadRequest, HttpResponse
+from django.utils import timezone
+
+# --- Models Import ---
+from ..models import (
+    Order, OrderItem, OrderComment, Material, 
+    Warehouse, Transaction, Supplier, Category, ConstructionStage, SupplierPrice
+)
+from .utils import get_warehouse_balance, log_audit
+
+# --- Forms Import ---
+try:
+    from ..forms import OrderForm, OrderItemForm, OrderCommentForm, OrderFnItemFormSet
+except ImportError:
+    # Fallback definition if forms.py is missing or incomplete
+    from django import forms
+    from django.forms import inlineformset_factory
+
+    class OrderForm(forms.ModelForm):
+        class Meta:
+            model = Order
+            fields = ['warehouse', 'priority', 'expected_date', 'note', 'request_photo']
+    class OrderItemForm(forms.ModelForm):
+        class Meta:
+            model = OrderItem
+            fields = ['material', 'quantity']
+    class OrderCommentForm(forms.ModelForm):
+        class Meta:
+            model = OrderComment
+            fields = ['text']
+            widgets = {'text': forms.Textarea(attrs={'rows': 3, 'placeholder': 'Ваш коментар...'})}
+    
+    OrderFnItemFormSet = inlineformset_factory(Order, OrderItem, form=OrderItemForm, extra=1)
+
 
 @login_required
-def manager_dashboard(request):
-    if not request.user.is_staff: return redirect('index')
-    
-    orders = Order.objects.exclude(status='draft').select_related('warehouse', 'created_by').prefetch_related('items__material').order_by('-created_at')
+def dashboard(request):
+    """
+    Головна панель менеджера (Dashboard).
+    """
+    # KPI Статистика
+    orders_stat = {
+        'new': Order.objects.filter(status='new').count(),
+        'approved': Order.objects.filter(status='approved').count(),
+        'purchasing': Order.objects.filter(status='purchasing').count(),
+        'active_total': Order.objects.exclude(status__in=['completed', 'rejected', 'draft']).count()
+    }
+
+    # Фільтрація списку останніх заявок (якщо передано параметри)
+    recent_orders = Order.objects.select_related('warehouse', 'created_by').prefetch_related('items__material').order_by('-created_at')
     
     status = request.GET.get('status')
+    if status:
+        recent_orders = recent_orders.filter(status=status)
+        
+    # Ліміт 10 для дашборду
+    recent_orders = recent_orders[:10]
+
+    low_stock_materials = Material.objects.filter(min_limit__gt=0)[:5] 
+
+    context = {
+        'stats': orders_stat,
+        'recent_orders': recent_orders,
+        'low_stock_materials': low_stock_materials,
+        'page_title': 'Панель керування',
+        'current_status': status
+    }
+    return render(request, 'warehouse/manager_dashboard.html', context)
+
+
+@login_required
+def order_list(request):
+    """
+    Список заявок з розширеною фільтрацією та пошуком.
+    """
+    orders = Order.objects.select_related('warehouse', 'created_by').prefetch_related('items__material').order_by('-created_at')
+
+    status = request.GET.get('status')
     priority = request.GET.get('priority')
-    wh_id = request.GET.get('warehouse')
-    
-    if status: orders = orders.filter(status=status)
-    if priority: orders = orders.filter(priority=priority)
-    if wh_id: orders = orders.filter(warehouse_id=wh_id)
-    
-    warehouses = Warehouse.objects.all()
-    count_new = Order.objects.filter(status='new').count()
-    count_rfq = Order.objects.filter(status='rfq').count()
-    
-    return render(request, 'warehouse/manager_dashboard.html', {
-        'orders': orders, 'warehouses': warehouses,
-        'current_status': status, 'count_new': count_new, 'count_rfq': count_rfq
-    })
+    warehouse_id = request.GET.get('warehouse')
+    search_query = request.GET.get('q')
+
+    if status:
+        orders = orders.filter(status=status)
+    if priority:
+        orders = orders.filter(priority=priority)
+    if warehouse_id:
+        orders = orders.filter(warehouse_id=warehouse_id)
+
+    if search_query:
+        # Пошук по позиціях (items__material) замість legacy order.material
+        orders = orders.filter(
+            Q(id__icontains=search_query) |
+            Q(note__icontains=search_query) |
+            Q(warehouse__name__icontains=search_query) |
+            Q(items__material__name__icontains=search_query) 
+        ).distinct()
+
+    paginator = Paginator(orders, 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'orders': page_obj,
+        'warehouses': Warehouse.objects.all(),
+        'status_choices': Order.STATUS_CHOICES,
+        'current_status': status,
+        'page_title': 'Усі заявки'
+    }
+    return render(request, 'warehouse/order_list.html', context)
+
 
 @login_required
-def manager_order_detail(request, pk):
-    order = get_object_or_404(Order.objects.prefetch_related(
-        'items__material', 
-        'items__material__supplier_prices__supplier'
-    ), pk=pk)
-    
-    if not request.user.is_staff: return redirect('index')
-    
-    order.manager_last_viewed_at = timezone.now()
-    order.save(update_fields=['manager_last_viewed_at'])
-
-    if request.method == 'POST' and 'comment_text' in request.POST:
-        comment_text = request.POST.get('comment_text')
-        if comment_text:
-            OrderComment.objects.create(order=order, author=request.user, text=comment_text)
-            return redirect('manager_order_detail', pk=pk)
-    
-    # --- ЛОГІКА ПІДБОРУ ПОСТАЧАЛЬНИКА ---
-    suggested_suppliers = []
-    items_list = list(order.items.all())
-    
-    if items_list:
-        material_ids = [item.material.id for item in items_list]
-        distinct_materials_count = len(set(material_ids))
-        
-        suggested_suppliers = Supplier.objects.filter(
-            prices__material__id__in=material_ids
-        ).annotate(
-            covered_count=Count('prices__material', distinct=True)
-        ).filter(
-            covered_count=distinct_materials_count
-        )
-
-    # --- INTERNAL STOCK ---
-    # Перевіряємо, чи є товари на інших складах
-    internal_stock_suggestions = {}
-    
-    for item in items_list:
-        stock_qs = Transaction.objects.filter(
-            material=item.material
-        ).exclude(
-            warehouse=order.warehouse
-        ).values('warehouse').annotate(
-            total=Sum(Case(
-                When(transaction_type='IN', then=F('quantity')),
-                When(transaction_type__in=['OUT', 'TRANSFER', 'LOSS'], then=0-F('quantity')),
-                default=0, output_field=DecimalField()
-            ))
-        ).filter(total__gt=0)
-        
-        suggestions = []
-        for s in stock_qs:
-            wh = Warehouse.objects.get(pk=s['warehouse'])
-            suggestions.append({'wh': wh, 'qty': s['total']})
-        
-        if suggestions:
-            internal_stock_suggestions[item.material.name] = suggestions
-
-    comments = order.comments.all().select_related('author')
-    
-    return render(request, 'warehouse/manager_order_detail.html', {
-        'order': order, 
-        'internal_stock_suggestions': internal_stock_suggestions,
-        'suggested_suppliers': suggested_suppliers,
-        'comments': comments
-    })
-
-@login_required
-def create_po(request, pk):
+def order_detail(request, pk):
+    """
+    Детальний перегляд заявки: інформація, позиції, коментарі (чат).
+    """
     order = get_object_or_404(Order, pk=pk)
-    if not request.user.is_staff: return HttpResponse("⛔", 403)
+    
+    if request.method == 'POST' and 'add_comment' in request.POST:
+        form = OrderCommentForm(request.POST)
+        if form.is_valid():
+            comment = form.save(commit=False)
+            comment.order = order
+            comment.author = request.user
+            comment.save()
+            messages.success(request, "Коментар додано!")
+            return redirect('manager_order_detail', pk=pk) 
+    else:
+        comment_form = OrderCommentForm()
+
+    context = {
+        'order': order,
+        # Використовуємо items.all() - канонічний спосіб
+        'items': order.items.select_related('material').all(),
+        'comments': order.comments.select_related('author').order_by('created_at'),
+        'comment_form': comment_form,
+        'page_title': f'Заявка #{order.id}'
+    }
+    return render(request, 'warehouse/order_detail.html', context)
+
+
+@login_required
+def order_create(request):
+    """
+    Створення нової заявки менеджером (Order + Items через FormSet).
+    """
+    if request.method == 'POST':
+        form = OrderForm(request.POST, request.FILES)
+        formset = OrderFnItemFormSet(request.POST)
+        
+        if form.is_valid() and formset.is_valid():
+            with transaction.atomic():
+                order = form.save(commit=False)
+                order.created_by = request.user
+                order.status = 'new'
+                order.save()
+                
+                # Зберігаємо позиції
+                formset.instance = order
+                formset.save()
+                
+                log_audit(request, 'CREATE', order, new_val=f"Order #{order.id} created by manager")
+                messages.success(request, f"Заявку #{order.id} створено успішно.")
+                return redirect('manager_order_detail', pk=order.id)
+    else:
+        form = OrderForm()
+        formset = OrderFnItemFormSet()
+
+    context = {
+        'form': form,
+        'formset': formset,
+        'page_title': 'Створити заявку'
+    }
+    return render(request, 'warehouse/order_form.html', context)
+
+
+@login_required
+def order_edit(request, pk):
+    """
+    Редагування заявки та її позицій (Items через FormSet).
+    """
+    order = get_object_or_404(Order, pk=pk)
 
     if request.method == 'POST':
-        supplier_id = request.POST.get('supplier_id') 
-        manual_supplier = request.POST.get('manual_supplier') 
+        form = OrderForm(request.POST, request.FILES, instance=order)
+        formset = OrderFnItemFormSet(request.POST, instance=order)
         
-        if supplier_id:
-            try:
-                sup = Supplier.objects.get(id=supplier_id)
-                order.selected_supplier = sup
-                order.supplier_info = sup.name
-                for item in order.items.all():
-                    price_obj = SupplierPrice.objects.filter(supplier=sup, material=item.material).first()
-                    if price_obj:
-                        item.supplier_price = price_obj.price
-                        item.save()
-            except Supplier.DoesNotExist: pass
-        elif manual_supplier:
-            order.selected_supplier = None
-            order.supplier_info = manual_supplier 
-        
-        order.approved_by = request.user
-        order.approved_at = timezone.now()
-        order.status = 'purchasing'
-        order.log_change(request.user, f"Затвердив закупівлю. Постачальник: {order.supplier_info}")
-        log_audit(request, 'APPROVE', obj=order, new_val=f"Purchasing from: {order.supplier_info}")
-        order.save()
-        return redirect('logistics_dashboard') 
+        if form.is_valid() and formset.is_valid():
+            with transaction.atomic():
+                form.save()
+                formset.save()
+                
+                log_audit(request, 'UPDATE', order, new_val="Edited by manager")
+                messages.success(request, "Заявку оновлено.")
+                return redirect('manager_order_detail', pk=pk)
+    else:
+        form = OrderForm(instance=order)
+        formset = OrderFnItemFormSet(instance=order)
+
+    context = {
+        'form': form,
+        'formset': formset,
+        'order': order,
+        'page_title': f'Редагування заявки #{order.id}'
+    }
+    return render(request, 'warehouse/order_form.html', context)
+
+
+@login_required
+def order_approve(request, pk):
+    """
+    Погодження заявки.
+    """
+    order = get_object_or_404(Order, pk=pk)
     
-    return redirect('manager_order_detail', pk=pk)
-
-@login_required
-def transfer_from_stock(request, pk):
-    """
-    Переміщення товарів із запасів іншого складу.
-    Виконує сувору перевірку залишків перед проведенням.
-    """
-    order = get_object_or_404(Order, pk=pk)
-    if not request.user.is_staff: return HttpResponse("⛔", 403)
-
-    source_id = request.POST.get('source_id')
-    if source_id:
-        source = get_object_or_404(Warehouse, pk=source_id)
-        
-        # 1. ПЕРЕВІРКА: Чи вистачає ВСІХ товарів на складі-донорі?
-        missing_items = []
-        
-        for item in order.items.all():
-            # Рахуємо реальний залишок конкретного матеріалу на складі-джерелі
-            stock_on_source = Transaction.objects.filter(
-                warehouse=source, 
-                material=item.material
-            ).aggregate(
-                total=Sum(Case(
-                    When(transaction_type='IN', then=F('quantity')),
-                    When(transaction_type__in=['OUT', 'TRANSFER', 'LOSS'], then=0-F('quantity')),
-                    default=0, output_field=DecimalField()
-                ))
-            )['total'] or 0
-            
-            # Якщо залишку менше, ніж треба в заявці
-            if stock_on_source < item.quantity:
-                diff = item.quantity - stock_on_source
-                missing_items.append(f"{item.material.name} (Треба: {item.quantity}, Є: {stock_on_source})")
-        
-        # Якщо знайшли нестачу - скасовуємо операцію і показуємо помилку
-        if missing_items:
-            error_msg = f"⛔ Помилка переміщення! На складі '{source.name}' недостатньо товарів: {', '.join(missing_items)}."
-            messages.error(request, error_msg)
-            return redirect('manager_order_detail', pk=pk)
-
-        # 2. ЯКЩО ВСЕ ОК - ПРОВОДИМО ТРАНЗАКЦІЇ
-        with transaction.atomic():
-            for item in order.items.all():
-                Transaction.objects.create(
-                    transaction_type='TRANSFER', 
-                    warehouse=source, 
-                    material=item.material,
-                    quantity=item.quantity, 
-                    price=item.material.current_avg_price,
-                    description=f"Трансфер на {order.warehouse.name} (Заявка #{order.id})", 
-                    order=order, 
-                    created_by=request.user
-                )
-            
-            order.source_warehouse = source
-            order.status = 'in_transit'
-            order.approved_by = request.user
-            order.approved_at = timezone.now()
-            order.log_change(request.user, f"Погодив трансфер з {source.name}")
-            order.save()
-            
-            log_audit(request, 'TRANSFER', obj=order, new_val=f"From {source.name}")
-            messages.success(request, f"✅ Успішно оформлено переміщення з {source.name}")
-
-    return redirect('manager_dashboard')
-
-@login_required
-def approve_order(request, pk): return redirect('manager_order_detail', pk=pk)
-
-@login_required
-def reject_order(request, pk):
-    order = get_object_or_404(Order, pk=pk)
-    if request.user.is_staff:
-        order.status = 'rejected'
-        if not "ВІДХИЛЕНО" in order.note:
-            order.note = (order.note + " | " if order.note else "") + "ВІДХИЛЕНО: Розділіть замовлення."
-        log_audit(request, 'REJECT', obj=order, new_val="Rejected")
+    if request.method == 'POST':
+        order.status = 'approved'
         order.save()
-    return redirect('index')
+        
+        OrderComment.objects.create(
+            order=order,
+            author=request.user,
+            text="✅ Заявку погоджено. Передано в закупівлю."
+        )
+        
+        messages.success(request, f"Заявку #{order.id} погоджено!")
+        return redirect('manager_order_detail', pk=pk)
+    
+    return render(request, 'warehouse/order_confirm_action.html', {
+        'order': order, 
+        'action': 'approve',
+        'title': 'Погодити заявку?'
+    })
 
-# Додаємо нову view для розділення, якщо вона ще не була додана
+
 @login_required
-def split_order_view(request, pk):
+def order_reject(request, pk):
     """
-    Майстер розділення заявки на кілька частин за постачальниками.
+    Відхилення заявки.
+    """
+    order = get_object_or_404(Order, pk=pk)
+    
+    if request.method == 'POST':
+        reason = request.POST.get('reason', 'Без пояснення')
+        order.status = 'rejected'
+        order.save()
+        
+        OrderComment.objects.create(
+            order=order,
+            author=request.user,
+            text=f"🚫 Заявку відхилено. Причина: {reason}"
+        )
+        
+        messages.warning(request, f"Заявку #{order.id} відхилено.")
+        return redirect('manager_order_detail', pk=pk)
+
+    return render(request, 'warehouse/order_confirm_action.html', {
+        'order': order, 
+        'action': 'reject',
+        'title': 'Відхилити заявку?'
+    })
+
+
+@login_required
+def material_list(request):
+    """
+    Довідник матеріалів.
+    """
+    materials = Material.objects.all().order_by('name')
+    
+    search = request.GET.get('q')
+    if search:
+        materials = materials.filter(
+            Q(name__icontains=search) | 
+            Q(article__icontains=search)
+        )
+        
+    paginator = Paginator(materials, 50)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    
+    context = {
+        'materials': page_obj,
+        'page_title': 'Матеріали'
+    }
+    return render(request, 'warehouse/material_list.html', context)
+
+
+@login_required
+def material_detail(request, pk):
+    """
+    Детальна сторінка матеріалу: загальний залишок, розподіл по складах, історія руху.
+    """
+    material = get_object_or_404(Material, pk=pk)
+    
+    # 1. Залишки по складах
+    warehouses_stock = []
+    total_quantity = 0
+    
+    warehouses = Warehouse.objects.all()
+    for wh in warehouses:
+        # Рахуємо залишок для конкретного складу
+        txs = Transaction.objects.filter(warehouse=wh, material=material)
+        in_qty = txs.filter(transaction_type='IN').aggregate(s=Sum('quantity'))['s'] or 0
+        out_qty = txs.filter(transaction_type__in=['OUT', 'LOSS', 'TRANSFER']).aggregate(s=Sum('quantity'))['s'] or 0
+        balance = in_qty - out_qty
+        
+        if balance > 0:
+            warehouses_stock.append({
+                'warehouse': wh,
+                'quantity': round(balance, 2)
+            })
+            total_quantity += balance
+            
+    # 2. Оціночна вартість
+    avg_price = float(material.current_avg_price) if material.current_avg_price else 0.0
+    total_value = round(float(total_quantity) * avg_price, 2)
+    
+    # 3. Останні транзакції
+    transactions = Transaction.objects.filter(material=material).select_related('warehouse', 'created_by').order_by('-created_at')[:20]
+
+    context = {
+        'material': material,
+        'warehouses_stock': warehouses_stock,
+        'total_quantity': round(total_quantity, 2),
+        'total_value': total_value,
+        'transactions': transactions,
+        'page_title': material.name
+    }
+    return render(request, 'warehouse/material_detail.html', context)
+
+
+# ==============================================================================
+# SPLIT ORDER (РОЗДІЛЕННЯ ЗАЯВКИ)
+# ==============================================================================
+
+@login_required
+def split_order(request, pk):
+    """
+    Розділення заявки на декілька частин (наприклад, різні постачальники).
+    Працює з items, а не з legacy material field.
     """
     original_order = get_object_or_404(Order, pk=pk)
-    if not request.user.is_staff: return HttpResponse("⛔ Немає доступу", 403)
+    items = original_order.items.select_related('material').all()
     
-    if original_order.status != 'new':
-        return HttpResponse("⛔ Можна розділяти тільки нові заявки!", 400)
-
-    items = original_order.items.all().select_related('material')
+    # Групуємо постачальників для форми
+    suppliers = Supplier.objects.all()
+    suppliers_map = {s.id: s for s in suppliers}
     
-    groups = {}
-    suppliers_map = {} 
-    
-    for item in items:
-        best_price = SupplierPrice.objects.filter(material=item.material).order_by('price').first()
-        if best_price:
-            sup = best_price.supplier
-            suppliers_map[sup.id] = sup
-            if sup.id not in groups: groups[sup.id] = []
-            groups[sup.id].append(item)
-        else:
-            if 'unknown' not in groups: groups['unknown'] = []
-            groups['unknown'].append(item)
-
     if request.method == 'POST':
         with transaction.atomic():
             new_orders_map = {}
+            moved_count = 0
+            
             for item in items:
                 group_key = request.POST.get(f'item_{item.id}')
-                if group_key == 'original': continue
                 
-                if group_key not in new_orders_map:
-                    new_supplier = None
-                    sup_name = ""
-                    if group_key.startswith('sup_'):
-                        sup_id = int(group_key.replace('sup_', ''))
-                        new_supplier = Supplier.objects.get(id=sup_id)
-                        sup_name = new_supplier.name
-                    else:
-                        sup_name = "Розділена заявка"
-
-                    new_order = Order.objects.create(
-                        warehouse=original_order.warehouse,
-                        status='new',
-                        priority=original_order.priority,
-                        created_by=request.user,
-                        expected_date=original_order.expected_date,
-                        note=f"{original_order.note} (Частина #2)",
-                        selected_supplier=new_supplier,
-                        supplier_info=sup_name
-                    )
-                    new_orders_map[group_key] = new_order
-
-                target_order = new_orders_map[group_key]
-                item.order = target_order
-                if target_order.selected_supplier:
-                    price_obj = SupplierPrice.objects.filter(supplier=target_order.selected_supplier, material=item.material).first()
-                    if price_obj: item.supplier_price = price_obj.price
-                item.save()
+                # Якщо група не 'default'/'original' (залишити в старій), переносимо
+                if group_key and group_key != 'original':
+                    if group_key not in new_orders_map:
+                        supplier_id = None
+                        supplier = None
+                        
+                        if group_key.startswith('sup_'):
+                            try:
+                                supplier_id = int(group_key.split('_')[1])
+                                supplier = Supplier.objects.get(pk=supplier_id)
+                            except (ValueError, Supplier.DoesNotExist):
+                                pass
+                        
+                        new_order = Order.objects.create(
+                            warehouse=original_order.warehouse,
+                            created_by=original_order.created_by,
+                            status='new',
+                            priority=original_order.priority,
+                            expected_date=original_order.expected_date,
+                            supplier=supplier,
+                            note=f"Розділено із заявки #{original_order.id}"
+                        )
+                        new_orders_map[group_key] = new_order
+                    
+                    target_order = new_orders_map[group_key]
+                    item.order = target_order
+                    
+                    # Підтягуємо ціну постачальника
+                    if target_order.supplier:
+                        price_obj = SupplierPrice.objects.filter(
+                            supplier=target_order.supplier, 
+                            material=item.material
+                        ).first()
+                        if price_obj:
+                            item.supplier_price = price_obj.price
+                            
+                    item.save()
+                    moved_count += 1
 
             if new_orders_map:
-                original_order.note += " | Заявка була розділена."
+                original_order.note = f"{original_order.note} | Частково розділена."
                 original_order.save()
-                log_audit(request, 'UPDATE', original_order, new_val=f"Split into {len(new_orders_map)+1} orders")
+                
+                if original_order.items.count() == 0:
+                    original_order.status = 'rejected'
+                    original_order.note += " (Всі товари перенесено)"
+                    original_order.save()
+
+                log_audit(request, 'UPDATE', original_order, new_val=f"Split into {len(new_orders_map)} new orders")
+                messages.success(request, f"Успішно розділено на {len(new_orders_map)} нових заявок! Перенесено {moved_count} товарів.")
                 
             return redirect('manager_dashboard')
 
     return render(request, 'warehouse/split_order.html', {
-        'order': original_order, 'items': items, 'groups': groups, 'suppliers_map': suppliers_map
+        'order': original_order, 
+        'items': items, 
+        'suppliers': suppliers,
+        'suppliers_map': suppliers_map
     })
+
+
+# ==============================================================================
+# COMPATIBILITY LAYER (ALIASES & STUBS)
+# ==============================================================================
+
+# Aliases
+manager_dashboard = dashboard
+manager_order_detail = order_detail
+
+@login_required
+def manager_process_order(request, pk):
+    """
+    Редирект на деталі заявки, оскільки процес погодження змінено.
+    Відображає шаблон-повідомлення.
+    """
+    order = get_object_or_404(Order, pk=pk)
+    return render(request, 'warehouse/manager_process_order.html', {'order': order})
+
+# Stubs
+@login_required
+def create_po(request, pk):
+    """
+    Формування PO (Purchase Order).
+    """
+    return redirect('print_order_pdf', pk=pk)

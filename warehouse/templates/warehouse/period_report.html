@@ -1,70 +1,73 @@
 {% extends 'warehouse/base.html' %}
+{% load static %}
 
 {% block title %}Оборотна відомість{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <h3 class="mb-4">📅 Оборотна відомість матеріалів</h3>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold"><i class="bi bi-calendar-range me-2"></i> Оборотна відомість матеріалів</h3>
+        <button onclick="window.print()" class="btn btn-outline-secondary no-print">
+            <i class="bi bi-printer me-2"></i> Друк
+        </button>
+    </div>
 
     <!-- Фільтр -->
-    <div class="card shadow-sm mb-4 no-print">
-        <div class="card-body bg-light">
+    <div class="card shadow-sm mb-4 no-print border-0 bg-light">
+        <div class="card-body">
             <form method="get" class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    {{ form.start_date.label_tag }}
+                    <label class="small fw-bold text-muted">{{ form.start_date.label }}</label>
                     {{ form.start_date }}
                 </div>
                 <div class="col-md-3">
-                    {{ form.end_date.label_tag }}
+                    <label class="small fw-bold text-muted">{{ form.end_date.label }}</label>
                     {{ form.end_date }}
                 </div>
-                <div class="col-md-3">
-                    {{ form.warehouse.label_tag }}
+                
+                <div class="col-md-2">
+                    <label class="small fw-bold text-muted">{{ form.warehouse.label }}</label>
                     {{ form.warehouse }}
                 </div>
-                <div class="col-md-3 d-flex gap-2">
+                
+                <div class="col-md-2">
+                    <label class="small fw-bold text-muted">{{ form.category.label }}</label>
+                    {{ form.category }}
+                </div>
+
+                <div class="col-md-2 d-flex gap-2">
                     <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-search"></i> Сформувати
-                    </button>
-                    <button type="submit" name="export" value="excel" class="btn btn-success" title="Завантажити Excel">
-                        <i class="bi bi-file-earmark-excel"></i>
+                        <i class="bi bi-search me-1"></i> Пошук
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Результати -->
-    {% if results %}
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white border-0">
-            <h5 class="mb-0">
-                Звіт {% if warehouse %}по складу: <b>{{ warehouse.name }}</b>{% else %}по всій компанії{% endif %}
-                <small class="text-muted fs-6 ms-2">({{ request.GET.start_date }} — {{ request.GET.end_date }})</small>
-            </h5>
-        </div>
+    <!-- Таблиця -->
+    {% if report_data %}
+    <div class="card shadow-sm border-0">
         <div class="table-responsive">
-            <table class="table table-striped table-hover align-middle table-sm">
-                <thead class="table-dark">
+            <table class="table table-hover align-middle mb-0 table-sm text-center">
+                <thead class="table-light">
                     <tr>
-                        <th>Категорія</th> <!-- НОВА КОЛОНКА -->
-                        <th>Матеріал</th>
-                        <th class="text-center">Од.</th>
-                        <th class="text-end bg-secondary bg-opacity-25">Початок</th>
-                        <th class="text-end text-success">+ Прихід</th>
-                        <th class="text-end text-danger">- Витрата</th>
-                        <th class="text-end bg-primary bg-opacity-25">Кінець</th>
-                        <th class="text-end">Сума (грн)</th>
+                        <th class="text-start ps-3">Категорія</th>
+                        <th class="text-start">Матеріал</th>
+                        <th>Од.</th>
+                        <th class="text-end border-end">Поч. залишок</th>
+                        <th class="text-end text-success">Прихід</th>
+                        <th class="text-end text-danger border-end">Розхід</th>
+                        <th class="text-end fw-bold border-end bg-light">Кін. залишок</th>
+                        <th class="text-end pe-3">Сума (грн)</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in results %}
+                    {% for row in report_data %}
                     <tr>
-                        <!-- Виводимо категорію сірим кольором -->
-                        <td class="text-muted small fw-bold">{{ row.category }}</td>
+                        <td class="text-start ps-3 text-muted small fw-bold">{{ row.category }}</td>
                         
-                        <td class="fw-bold">{{ row.material.name }}</td>
-                        <td class="text-center small">{{ row.material.unit }}</td>
+                        <td class="text-start fw-bold">{{ row.material.name }}</td>
+                        <td class="text-muted small">{{ row.material.unit }}</td>
                         
                         <!-- Початковий залишок -->
                         <td class="text-end border-end bg-light">{{ row.start_balance }}</td>
@@ -80,16 +83,22 @@
                         <!-- Кінцевий залишок -->
                         <td class="text-end fw-bold bg-light text-primary border-end">{{ row.end_balance }}</td>
                         
-                        <td class="text-end small">{{ row.total_value }}</td>
+                        <td class="text-end pe-3 small">{{ row.total_value }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="7" class="text-end border-end">Всього вартість залишків:</td>
+                        <td class="text-end pe-3 text-success">{{ total_value }} ₴</td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
     {% else %}
-        <div class="alert alert-info text-center mt-4">
-            Натисніть "Сформувати", щоб побачити дані за поточний період.
+        <div class="alert alert-info text-center mt-4 border-0 shadow-sm">
+            <i class="bi bi-info-circle me-2"></i> Натисніть "Пошук", щоб побачити дані, або змініть параметри фільтрації.
         </div>
     {% endif %}
 </div>

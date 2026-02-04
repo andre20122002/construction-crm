@@ -1,114 +1,171 @@
-{% extends 'warehouse/base.html' %}
+{% extends "warehouse/base.html" %}
 
-{% block title %}Управління закупівлями{% endblock %}
+{% block title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="h4 fw-bold">🛠️ Центр закупівель</h3>
-        <div class="btn-group">
-            <a href="?status=new" class="btn btn-outline-primary {% if current_status == 'new' %}active{% endif %}">
-                Нові <span class="badge bg-primary text-white ms-1">{{ count_new }}</span>
-            </a>
-            <a href="?status=rfq" class="btn btn-outline-warning text-dark {% if current_status == 'rfq' %}active{% endif %}">
-                Тендери (RFQ) <span class="badge bg-warning text-dark ms-1">{{ count_rfq }}</span>
-            </a>
-            <a href="?" class="btn btn-outline-secondary">Всі активні</a>
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="h4 mb-3">{{ page_title }}</h2>
         </div>
     </div>
 
-    <!-- FILTER BAR -->
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-body py-3">
-            <form method="get" class="row g-3 align-items-center">
-                <div class="col-md-3">
-                    <select name="warehouse" class="form-select" onchange="this.form.submit()">
-                        <option value="">Всі об'єкти</option>
-                        {% for wh in warehouses %}
-                            <option value="{{ wh.id }}" {% if request.GET.warehouse == wh.id|stringformat:"s" %}selected{% endif %}>{{ wh.name }}</option>
-                        {% endfor %}
-                    </select>
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card text-white bg-primary h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-file-earmark-plus me-2"></i>Нові заявки</h5>
+                    <p class="card-text display-6 fw-bold">{{ stats.new }}</p>
                 </div>
-                <div class="col-md-3">
-                    <select name="priority" class="form-select" onchange="this.form.submit()">
-                        <option value="">Будь-який пріоритет</option>
-                        <option value="high" {% if request.GET.priority == 'high' %}selected{% endif %}>🔴 Терміново</option>
-                        <option value="normal" {% if request.GET.priority == 'normal' %}selected{% endif %}>🟡 Звичайний</option>
-                    </select>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card text-white bg-success h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-check-circle me-2"></i>Погоджено</h5>
+                    <p class="card-text display-6 fw-bold">{{ stats.approved }}</p>
                 </div>
-            </form>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card text-white bg-warning h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-dark"><i class="bi bi-cart me-2"></i>Закупівля</h5>
+                    <p class="card-text display-6 fw-bold text-dark">{{ stats.purchasing }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card text-white bg-info h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-dark"><i class="bi bi-truck me-2"></i>В дорозі</h5>
+                    <p class="card-text display-6 fw-bold text-dark">{{ stats.transit }}</p>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- ORDERS TABLE -->
-    <div class="card shadow-sm border-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-light">
-                    <tr>
-                        <th class="ps-4">ID / Дата</th>
-                        <th>Матеріали (Прев'ю)</th>
-                        <th>Об'єкт</th>
-                        <th>Пріоритет</th>
-                        <th>Статус</th>
-                        <th>Автор</th>
-                        <th class="text-end pe-4">Дія</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in orders %}
-                    <tr style="cursor: pointer;" onclick="window.location='{% url 'manager_order_detail' order.id %}'">
-                        <td class="ps-4">
-                            <span class="fw-bold">#{{ order.id }}</span><br>
-                            <small class="text-muted">{{ order.created_at|date:"d.m" }}</small>
-                        </td>
-                        <td>
-                            <!-- ВИВОДИМО СПИСОК ТОВАРІВ -->
-                            <div class="fw-bold text-primary">
-                                {% for item in order.items.all|slice:":2" %}
-                                    <div>• {{ item.material.name }} ({{ item.quantity|floatformat:0 }} {{ item.material.unit }})</div>
-                                {% endfor %}
-                                {% if order.items.count > 2 %}
-                                    <small class="text-muted fst-italic">+ ще {{ order.items.count|add:"-2" }} поз.</small>
-                                {% endif %}
+    <!-- Quick Actions -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-0 fw-bold">
+                    ⚡ Швидкі дії
+                </div>
+                <div class="card-body d-flex flex-wrap gap-2">
+                    <a href="{% url 'create_order' %}" class="btn btn-outline-primary">
+                        <i class="bi bi-plus-lg me-1"></i> Створити заявку
+                    </a>
+                    <a href="{% url 'manager_dashboard' %}?status=new" class="btn btn-outline-warning">
+                        <i class="bi bi-hourglass-split me-1"></i> На погодження
+                    </a>
+                    <a href="{% url 'logistics_monitor' %}" class="btn btn-outline-info">
+                        <i class="bi bi-truck me-1"></i> Логістика
+                    </a>
+                    <a href="{% url 'material_list' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-box-seam me-1"></i> Матеріали
+                    </a>
+                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-dark">
+                        <i class="bi bi-people me-1"></i> Постачальники
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Recent Orders Table -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <span class="fw-bold">📋 Останні заявки</span>
+                    <a href="{% url 'manager_dashboard' %}" class="btn btn-sm btn-link text-decoration-none">Всі заявки &rarr;</a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">ID</th>
+                                <th>Об'єкт</th>
+                                <th>Автор</th>
+                                <th>Статус</th>
+                                <th>Дата</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in recent_orders %}
+                            <tr>
+                                <td class="ps-3 fw-bold">#{{ order.id }}</td>
+                                <td>{{ order.warehouse.name }}</td>
+                                <td>
+                                    <small class="text-muted">{{ order.created_by.get_full_name|default:order.created_by.username }}</small>
+                                </td>
+                                <td>
+                                    {% if order.status == 'new' %}
+                                        <span class="badge bg-primary">New</span>
+                                    {% elif order.status == 'approved' %}
+                                        <span class="badge bg-success">Approved</span>
+                                    {% elif order.status == 'purchasing' %}
+                                        <span class="badge bg-warning text-dark">Purchasing</span>
+                                    {% elif order.status == 'transit' %}
+                                        <span class="badge bg-info text-dark">Transit</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ order.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ order.created_at|date:"d.m" }}</td>
+                                <td class="text-end pe-3">
+                                    <a href="{% url 'manager_order_detail' order.id %}" class="btn btn-sm btn-light border">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">Немає активних заявок</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Critical Stock Alert (Side Panel) -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 h-100 border-start border-4 border-danger">
+                <div class="card-header bg-white border-0 fw-bold text-danger">
+                    ⚠️ Критичні залишки
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for material in critical_stock %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+                            <div>
+                                <strong class="text-dark">{{ material.name }}</strong>
+                                <br>
+                                <small class="text-muted">
+                                    Мін. ліміт: <span class="fw-bold text-danger">{{ material.min_limit }} {{ material.unit }}</span>
+                                </small>
                             </div>
-                        </td>
-                        <td>{{ order.warehouse.name }}</td>
-                        <td>
-                            {% if order.priority == 'high' %}
-                                <span class="badge bg-danger">Терміново</span>
-                            {% elif order.priority == 'low' %}
-                                <span class="badge bg-success">Не горить</span>
-                            {% else %}
-                                <span class="badge bg-light text-dark border">Норм</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if order.status == 'new' %}<span class="badge bg-primary">Нова</span>
-                            {% elif order.status == 'rfq' %}<span class="badge bg-warning text-dark">RFQ</span>
-                            {% elif order.status == 'purchasing' %}<span class="badge bg-info text-dark">Купівля</span>
-                            {% elif order.status == 'in_transit' %}<span class="badge bg-secondary">В дорозі</span>
-                            {% elif order.status == 'completed' or order.status == 'approved' %}<span class="badge bg-success">Виконано</span>
-                            {% endif %}
-                        </td>
-                        <td class="small text-muted">
-                            {{ order.created_by.get_full_name|default:order.created_by.username }}
-                        </td>
-                        <td class="text-end pe-4" onclick="event.stopPropagation();">
-                            <a href="{% url 'print_order_pdf' order.id %}" target="_blank" class="btn btn-sm btn-outline-secondary me-1" title="Друк накладної">
-                                <i class="bi bi-printer"></i>
+                            <a href="{% url 'material_list' %}?q={{ material.article }}" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-search"></i>
                             </a>
-                            <a href="{% url 'manager_order_detail' order.id %}" class="btn btn-sm btn-dark">
-                                <i class="bi bi-gear-fill"></i>
-                            </a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="7" class="text-center py-5 text-muted">Заявок не знайдено</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        </li>
+                        {% empty %}
+                        <li class="list-group-item text-center text-muted py-4">
+                            <i class="bi bi-check-circle-fill text-success fs-4 d-block mb-2"></i>
+                            Все в нормі, критичних залишків немає
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="card-footer text-center bg-white border-top-0 pb-3">
+                    <a href="{% url 'material_list' %}" class="btn btn-link text-danger text-decoration-none fw-bold">Переглянути всі матеріали &rarr;</a>
+                </div>
+            </div>
         </div>
     </div>
 </div>

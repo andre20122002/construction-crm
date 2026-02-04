@@ -25,13 +25,11 @@
                     <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
                 </div>
                 <div class="col-md-3 d-flex gap-2">
-                    <button type="submit" class="btn btn-dark w-100"><i class="bi bi-funnel"></i> Фільтрувати</button>
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Показати</button>
                     <a href="{% url 'procurement_journal' %}" class="btn btn-outline-secondary" title="Скинути"><i class="bi bi-x-lg"></i></a>
                 </div>
                 <div class="col-md-3 text-end">
-                    <button type="submit" name="export" value="excel" class="btn btn-success text-white w-100">
-                        <i class="bi bi-file-earmark-excel"></i> Завантажити Excel
-                    </button>
+                    <button type="button" onclick="window.print()" class="btn btn-outline-dark"><i class="bi bi-printer"></i> Друк</button>
                 </div>
             </form>
         </div>
@@ -40,27 +38,31 @@
     <!-- ТАБЛИЦЯ -->
     <div class="card shadow-sm border-0">
         <div class="table-responsive">
-            <table class="table table-hover table-bordered align-middle mb-0" style="font-size: 0.9rem;">
-                <thead class="table-dark text-center">
+            <table class="table table-hover align-middle mb-0 small">
+                <thead class="bg-light">
                     <tr>
                         <th>ID</th>
-                        <th>Дата ств.</th>
-                        <th>Статус</th>
-                        <th>Менеджер</th>
-                        <th>Об'єкт / Прораб</th>
-                        <th>Матеріал</th>
+                        <th class="text-center">Створено</th>
+                        <th class="text-center">Статус</th>
+                        <th>Автор</th>
+                        <th>Склад</th>
+                        <th>Матеріали</th>
                         <th>Постачальник</th>
-                        <th>Ціна</th>
-                        <th>К-сть</th>
-                        <th>Сума</th>
-                        <th>Дата зак.</th>
-                        <th>Коментар</th>
+                        <!-- Ціни (приховано, якщо не передано) -->
+                        {% if show_prices %}
+                        <th class="text-end">Ціна</th>
+                        <th class="text-end">Сума</th>
+                        {% endif %}
+                        <th class="text-center">Дата закупівлі</th>
+                        <th>Примітка</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in journal %}
                     <tr>
-                        <td class="text-center fw-bold">#{{ row.order_id }}</td>
+                        <td class="fw-bold">
+                            <a href="{% url 'manager_order_detail' row.order_id %}" class="text-decoration-none">#{{ row.order_id }}</a>
+                        </td>
                         <td class="text-center">{{ row.created_at|date:"d.m.y" }}</td>
                         <td class="text-center">
                             <span class="badge bg-light text-dark border">{{ row.status }}</span>
@@ -68,12 +70,30 @@
                         <td>{{ row.manager }}</td>
                         <td>{{ row.warehouse }}</td>
                         <td>
-                            <b>{{ row.material }}</b>
+                            <!-- Універсальний вивід матеріалів -->
+                            {% if row.material %}
+                                <!-- Якщо у view підготували готовий рядок -->
+                                <b>{{ row.material }}</b>
+                                {% if row.quantity %}<br><small class="text-muted">{{ row.quantity }} {{ row.unit }}</small>{% endif %}
+                            {% elif row.order_items %}
+                                <!-- Якщо передали список items -->
+                                {% for item in row.order_items|slice:":2" %}
+                                    <div>• {{ item.material.name }} ({{ item.quantity }} {{ item.material.unit }})</div>
+                                {% endfor %}
+                                {% if row.order_items.count > 2 %}
+                                    <small class="text-muted">... ще {{ row.order_items.count|add:"-2" }}</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
                         </td>
                         <td>{{ row.supplier }}</td>
-                        <td class="text-end">{{ row.price_unit }}</td>
-                        <td class="text-center fw-bold">{{ row.quantity }} <small class="text-muted">{{ row.unit }}</small></td>
-                        <td class="text-end fw-bold text-success">{{ row.total_cost }}</td>
+                        
+                        {% if show_prices %}
+                        <td class="text-end">{{ row.price_unit|default:"-" }}</td>
+                        <td class="text-end fw-bold text-success">{{ row.total_cost|default:"-" }}</td>
+                        {% endif %}
+                        
                         <td class="text-center">{{ row.purchase_date|date:"d.m.y" }}</td>
                         <td class="small text-muted text-truncate" style="max-width: 150px;" title="{{ row.note }}">
                             {{ row.note }}

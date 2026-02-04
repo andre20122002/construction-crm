@@ -1,0 +1,51 @@
+{% extends 'warehouse/base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 70vh;">
+    <div class="card shadow-lg border-0" style="max-width: 500px; width: 100%;">
+        <div class="card-header bg-white text-center py-4 border-0">
+            {% if action == 'approve' %}
+                <div class="display-1 text-success mb-3"><i class="bi bi-check-circle"></i></div>
+                <h3 class="fw-bold">Погодити заявку #{{ order.id }}?</h3>
+            {% else %}
+                <div class="display-1 text-danger mb-3"><i class="bi bi-x-circle"></i></div>
+                <h3 class="fw-bold">Відхилити заявку #{{ order.id }}?</h3>
+            {% endif %}
+        </div>
+        
+        <div class="card-body px-5">
+            <p class="text-center text-muted mb-4">
+                Ви збираєтесь змінити статус заявки на 
+                <span class="badge {% if action == 'approve' %}bg-success{% else %}bg-danger{% endif %} fs-6">
+                    {% if action == 'approve' %}Approved (Погоджено){% else %}Rejected (Відхилено){% endif %}
+                </span>.
+                {% if action == 'approve' %}
+                    Це означає, що матеріали будуть передані на закупівлю.
+                {% else %}
+                    Заявка буде закрита без виконання.
+                {% endif %}
+            </p>
+
+            <form method="post">
+                {% csrf_token %}
+                
+                {% if action == 'reject' %}
+                <div class="mb-4">
+                    <label class="form-label fw-bold text-danger">Причина відхилення (Обов'язково)</label>
+                    <textarea name="reason" class="form-control" rows="3" placeholder="Наприклад: Немає бюджету, дублікат..." required></textarea>
+                </div>
+                {% endif %}
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-lg {% if action == 'approve' %}btn-success{% else %}btn-danger{% endif %} shadow-sm">
+                        {% if action == 'approve' %}Так, погодити{% else %}Так, відхилити{% endif %}
+                    </button>
+                    <a href="{% url 'manager_order_detail' order.id %}" class="btn btn-light text-muted">Скасувати</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

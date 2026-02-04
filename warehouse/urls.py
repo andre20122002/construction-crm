@@ -1,69 +1,135 @@
 from django.urls import path
-from . import views
+
+# 🔥 Модульні імпорти views
+from .views import general, orders, reports, transactions, manager, foreman
+from .views.project_dashboard import project_dashboard
+from .views.concrete_analytics import concrete_analytics
+from .views.rebar_analytics import rebar_analytics
+from .views.mechanisms_analytics import mechanisms_analytics
+from .views.utils import ajax_warehouse_stock, ajax_materials
+# Імпортуємо нову view home (диспетчер)
+from .views.home import home as home_view
 
 urlpatterns = [
-    # --- ГОЛОВНА ---
-    path('', views.index, name='index'),
-    
-    # --- AJAX (API) ---
-    path('ajax/check_duplicates/', views.check_order_duplicates, name='check_order_duplicates'),
+    # ==============================================================================
+    # ГОЛОВНА СТОРІНКА (HOME / DISPATCHER)
+    # ==============================================================================
+    # Головний URL '/' тепер веде на home_view, який перенаправляє за роллю
+    path('', home_view, name='home'),
 
-    # --- РОБОЧИЙ СТІЛ МЕНЕДЖЕРА ---
-    path('manager/dashboard/', views.manager_dashboard, name='manager_dashboard'),
-    path('manager/order/<int:pk>/', views.manager_order_detail, name='manager_order_detail'),
-    path('manager/order/<int:pk>/po/', views.create_po, name='create_po'),
-    path('manager/order/<int:pk>/transfer/', views.transfer_from_stock, name='transfer_from_stock'),
-
-    # --- КАБІНЕТ ПРОРАБА ---
-    path('my/order/<int:pk>/', views.foreman_order_detail, name='foreman_order_detail'),
-    path('my/order/<int:pk>/edit/', views.foreman_edit_order, name='foreman_edit_order'),
-    path('my/deliveries/', views.delivery_history_view, name='delivery_history'),
-    path('my/writeoffs/', views.writeoff_history_view, name='writeoff_history'),
-    path('my/storage/', views.foreman_storage_view, name='foreman_storage'),
-
-    # --- СКЛАДИ ТА МАТЕРІАЛИ ---
-    path('warehouse/<int:pk>/', views.warehouse_detail, name='warehouse_detail'),
-    path('materials/', views.material_list, name='material_list'),
-    path('material/<int:pk>/', views.material_detail, name='material_detail'),
+    # Старий index перенесено на /dashboard/ (але name='index' збережено для шаблонів)
+    path('dashboard/', general.index, name='index'),
     
-    # --- МОДУЛІ ---
-    path('logistics/', views.logistics_dashboard, name='logistics_dashboard'),
-    path('reports/', views.reports_dashboard, name='reports_dashboard'),
-    path('report/period/', views.period_report, name='period_report'),
-    path('profile/', views.profile_view, name='profile'),
-    path('profile/switch/<int:pk>/', views.switch_active_warehouse, name='switch_active_warehouse'),
+    # ==============================================================================
+    # AJAX API (ДЛЯ JS)
+    # ==============================================================================
+    path('ajax/check_duplicates/', orders.check_order_duplicates, name='check_order_duplicates'),
+    path('ajax/load-stages/', general.load_stages, name='ajax_load_stages'),
+    
+    # (A) Ajax Warehouse Stock: Legacy path з новим іменем
+    path('ajax/warehouse-stock/', ajax_warehouse_stock, name='ajax_warehouse_stock_legacy'),
+    # (A) Ajax Warehouse Stock: Canonical path
+    path('ajax/warehouse/<int:warehouse_id>/stock/', ajax_warehouse_stock, name='ajax_warehouse_stock'),
+    # Allow reversing 'ajax_warehouse_stock' without arguments (aliases to legacy) for templates using query params
+    path('ajax/warehouse/stock/', ajax_warehouse_stock, name='ajax_warehouse_stock'),
 
-    # --- ОПЕРАЦІЇ ---
-    path('order/create/', views.create_order, name='create_order'),
-    path('order/receipt/<int:pk>/', views.confirm_receipt, name='confirm_receipt'),
-    path('transaction/add/', views.add_transaction, name='add_transaction'),
-    path('transaction/<int:pk>/', views.transaction_detail, name='transaction_detail'),
+    # AJAX API для матеріалів
+    path('ajax/materials/', ajax_materials, name='ajax_materials'),
 
-    path('orders/', views.order_list, name='order_list'),
-    path('orders/<int:pk>/approve/', views.approve_order, name='approve_order'),
-    path('orders/<int:pk>/reject/', views.reject_order, name='reject_order'),
-    path('orders/<int:pk>/confirm/', views.confirm_draft, name='confirm_draft'),
-    path('orders/<int:pk>/delete/', views.delete_order, name='delete_order'),
+    # ==============================================================================
+    # РОБОЧИЙ СТІЛ МЕНЕДЖЕРА (MANAGER)
+    # ==============================================================================
+    path('manager/dashboard/', manager.manager_dashboard, name='manager_dashboard'),
+    # Список заявок (Order List)
+    path('manager/orders/', orders.order_list, name='order_list'),
+    path('manager/order/<int:pk>/', manager.manager_order_detail, name='manager_order_detail'),
     
-    # --- ЗВІТИ ТА ДРУК ---
-    path('export/excel/', views.export_stock_report, name='export_stock_report'),
-    path('orders/<int:pk>/pdf/', views.print_order_pdf, name='print_order_pdf'),
-    path('reports/procurement/', views.procurement_journal, name='procurement_journal'),
-    path('reports/financial/', views.financial_report, name='financial_report'),
-    path('reports/planning/', views.planning_report, name='planning_report'),
-    path('reports/stock/', views.stock_balance_report, name='stock_balance_report'),
-    path('reports/movement/', views.movement_history, name='movement_history'), 
-    path('reports/writeoff/', views.writeoff_report, name='writeoff_report'),
-    path('reports/transfers/', views.transfer_journal, name='transfer_journal'),
-    path('reports/transfers/analytics/', views.transfer_analytics, name='transfer_analytics'),
-    path('reports/comparison/', views.objects_comparison, name='objects_comparison'),
-    path('reports/suppliers/', views.suppliers_rating, name='suppliers_rating'),
-    path('reports/savings/', views.savings_report, name='savings_report'),
-    path('reports/problems/', views.problem_areas, name='problem_areas'),
+    # Канонічні дії менеджера для створення/редагування заявок (Order + Items)
+    path('order/create/', orders.create_order, name='create_order'),
+    # (B) Відновлено маршрут edit_order
+    path('order/<int:pk>/edit/', orders.edit_order, name='edit_order'),
+    path('order/<int:pk>/delete/', orders.delete_order, name='delete_order'),
     
-    # 👇 НОВИЙ МАРШРУТ 👇
-    path('reports/audit/', views.global_audit_log, name='global_audit_log'),
+    # Обробка заявки (погодження/відхилення)
+    path('manager/order/<int:pk>/process/', manager.manager_process_order, name='manager_process_order'),
     
-    path('orders/<int:pk>/mark_shipped/', views.mark_shipped, name='mark_shipped'),
-    path('manager/order/<int:pk>/split/', views.split_order_view, name='split_order'),
+    # Split Order (Розділення заявки)
+    path('manager/order/<int:pk>/split/', manager.split_order, name='split_order'),
+
+    # ==============================================================================
+    # ЛОГІСТИКА
+    # ==============================================================================
+    # (C) Логістика: Канонічний маршрут
+    path('logistics/', orders.logistics_monitor, name='logistics_monitor'),
+    # (C) Логістика: Alias з іншим URL для усунення помилки NoReverseMatch та дублювання URL
+    path('logistics/dashboard/', orders.logistics_monitor, name='logistics_dashboard'),
+    
+    path('order/<int:pk>/mark_shipped/', orders.mark_order_shipped, name='mark_order_shipped'),
+    path('order/<int:pk>/confirm_receipt/', orders.confirm_receipt, name='confirm_receipt'),
+
+    # ==============================================================================
+    # СКЛАД (TRANSACTIONS)
+    # ==============================================================================
+    path('warehouse/<int:pk>/', transactions.warehouse_detail, name='warehouse_detail'),
+    path('transaction/<int:pk>/', transactions.transaction_detail, name='transaction_detail'),
+    path('transaction/add/', transactions.add_transaction, name='add_transaction'),
+    
+    # Переміщення (Transfers)
+    path('transfer/create/', transactions.create_transfer_view, name='create_transfer'), # Використовує alias у transactions.py
+    # Alias для сумісності з шаблонами/тестами (add_transfer)
+    path('transfer/add/', transactions.create_transfer_view, name='add_transfer'),
+
+    # ==============================================================================
+    # ПРОРАБ (FOREMAN)
+    # ==============================================================================
+    path('foreman/storage/', foreman.foreman_storage_view, name='foreman_storage'),
+    path('foreman/order/<int:pk>/', foreman.foreman_order_detail, name='foreman_order_detail'),
+    path('foreman/history/writeoffs/', foreman.writeoff_history_view, name='writeoff_history'),
+    path('foreman/history/deliveries/', foreman.delivery_history_view, name='delivery_history'),
+
+    # ==============================================================================
+    # МАТЕРІАЛИ (CATALOG)
+    # ==============================================================================
+    path('materials/', general.material_list, name='material_list'),
+    path('materials/<int:pk>/', general.material_detail, name='material_detail'),
+
+    # ==============================================================================
+    # ЗВІТИ (REPORTS)
+    # ==============================================================================
+    path('reports/', reports.reports_dashboard, name='reports_dashboard'),
+    path('reports/stock/balance/', reports.stock_balance_view, name='stock_balance_report'), # Alias
+    path('reports/stock/excel/', reports.export_stock_report, name='export_stock_report'), # Alias
+    
+    path('reports/period/', reports.period_report, name='period_report'),
+    path('reports/writeoffs/', reports.writeoff_report, name='writeoff_report'),
+    
+    # Фінанси та Планування
+    path('reports/planning/', reports.planning_report, name='planning_report'),
+    path('reports/suppliers/', reports.suppliers_rating, name='suppliers_rating'),
+    path('reports/financial/', reports.savings_report, name='financial_report'), # Alias
+    path('reports/problems/', reports.problem_areas, name='problem_areas'),
+    path('reports/comparison/', reports.objects_comparison, name='objects_comparison'),
+    
+    # Логістика та Історія
+    path('reports/transfers/', reports.transfer_journal, name='transfer_journal'),
+    path('reports/transfers/analytics/', reports.transfer_analytics, name='transfer_analytics'),
+    path('reports/movement/', reports.movement_history, name='movement_history'),
+    path('reports/procurement/', reports.procurement_journal, name='procurement_journal'),
+    path('reports/audit/', reports.global_audit_log, name='global_audit_log'),
+    
+    # SAP Analytics
+    path('reports/rebar/', rebar_analytics, name='rebar_analytics'),
+    path('reports/concrete/', concrete_analytics, name='concrete_analytics'),
+    path('reports/mechanisms/', mechanisms_analytics, name='mechanisms_analytics'),
+    path('dashboard/project/', project_dashboard, name='project_dashboard'),
+    
+    # ==============================================================================
+    # ПРОФІЛЬ
+    # ==============================================================================
+    path('profile/', general.profile_view, name='profile'),
+    path('profile/switch-wh/<int:pk>/', general.switch_active_warehouse, name='switch_active_warehouse'),
+    path('profile/change-password/', general.change_password_view, name='change_password'),
+    
+    # Друк
+    path('order/<int:pk>/print/', orders.print_order_pdf, name='print_order_pdf'),
 ]

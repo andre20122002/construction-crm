@@ -1,75 +1,141 @@
-{% extends 'warehouse/base.html' %}
+{% extends "warehouse/base.html" %}
 
-{% block title %}Довідник матеріалів - БудСклад{% endblock %}
+{% block title %}{{ page_title }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="h4 mb-0">📚 Довідник матеріалів</h3>
-        {% if user.is_staff %}
-        <a href="/admin/warehouse/material/add/" class="btn btn-primary btn-sm" target="_blank">
-            <i class="bi bi-plus-lg"></i> Додати новий
-        </a>
-        {% endif %}
-    </div>
-
-    <!-- Фільтр -->
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-body">
-            <input type="text" id="searchInput" class="form-control" placeholder="🔍 Пошук за назвою або артикулом...">
+<div class="container-fluid mt-4">
+    <!-- Header & Search -->
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h2 class="h4 mb-0">{{ page_title }}</h2>
+        </div>
+        <div class="col-md-6">
+            <div class="d-flex justify-content-md-end mt-3 mt-md-0">
+                <!-- Search Form -->
+                <form method="get" class="d-flex w-100" style="max-width: 400px;">
+                    <input type="text" name="q" class="form-control me-2" placeholder="🔍 Пошук за назвою, артикулом..." value="{{ request.GET.q|default:'' }}">
+                    <button type="submit" class="btn btn-primary">Пошук</button>
+                    {% if request.GET.q %}
+                        <a href="{% url 'material_list' %}" class="btn btn-outline-secondary ms-2" title="Скинути">✖</a>
+                    {% endif %}
+                </form>
+                
+                {% if user.is_staff %}
+                <a href="/admin/warehouse/material/add/" class="btn btn-success ms-3 text-nowrap" target="_blank">
+                    <i class="bi bi-plus-lg"></i> Додати
+                </a>
+                {% endif %}
+            </div>
         </div>
     </div>
 
-    <div class="row row-cols-1 row-cols-md-3 row-cols-xl-4 g-4" id="materialsGrid">
-        {% for mat in materials %}
-        <div class="col material-card" data-name="{{ mat.name|lower }} {{ mat.article|lower }}">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body">
+    <!-- Materials Grid -->
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-4">
+        {% for material in materials %}
+        <div class="col">
+            <div class="card h-100 border-0 shadow-sm hover-shadow transition-all">
+                <div class="card-body d-flex flex-column">
+                    <!-- Top: Category & Article -->
                     <div class="d-flex justify-content-between align-items-start mb-2">
-                        <span class="badge bg-light text-secondary border">{{ mat.article }}</span>
-                        {% if mat.total_stock > 0 %}
-                            <span class="badge bg-success bg-opacity-10 text-success">В наявності</span>
-                        {% else %}
-                            <span class="badge bg-light text-muted">Немає</span>
-                        {% endif %}
+                        <span class="badge bg-light text-secondary border">{{ material.category.name|default:"Без категорії" }}</span>
+                        <small class="text-muted text-uppercase font-monospace" style="font-size: 0.75rem;">{{ material.article }}</small>
                     </div>
                     
-                    <h6 class="card-title fw-bold mb-1">
-                        <a href="{% url 'material_detail' mat.pk %}" class="text-decoration-none text-dark stretched-link">
-                            {{ mat.name }}
+                    <!-- Title -->
+                    <h6 class="card-title fw-bold mb-1 text-truncate" title="{{ material.name }}">
+                        <a href="{% url 'material_detail' pk=material.pk %}" class="text-decoration-none text-dark stretched-link">
+                            {{ material.name }}
                         </a>
                     </h6>
-                    <p class="text-muted small mb-3">Од. виміру: {{ mat.get_unit_display }}</p>
+                    
+                    <!-- Characteristics -->
+                    {% if material.characteristics %}
+                        <div class="small text-info mb-2 fw-bold text-truncate">{{ material.characteristics }}</div>
+                    {% else %}
+                        <div class="small text-muted mb-2 opacity-0">.</div> <!-- Spacer -->
+                    {% endif %}
 
-                    <div class="d-flex justify-content-between align-items-end mt-auto">
+                    <p class="text-muted small mb-3">Од. виміру: {{ material.get_unit_display }}</p>
+
+                    <!-- Bottom: Stock & Price -->
+                    <div class="mt-auto d-flex justify-content-between align-items-end border-top pt-3">
                         <div>
-                            <small class="text-muted d-block" style="font-size: 0.75rem;">Загальний залишок</small>
-                            <span class="fw-bold fs-5">{{ mat.total_stock }}</span> <small>{{ mat.unit }}</small>
+                            <small class="text-muted d-block text-uppercase" style="font-size: 0.65rem;">Загальний залишок</small>
+                            {% with stock=material.total_stock %}
+                                <span class="fw-bold fs-5 {% if stock <= material.min_limit and material.min_limit > 0 %}text-danger{% else %}text-success{% endif %}">
+                                    {{ stock|floatformat:2 }}
+                                </span> 
+                                <small class="text-muted">{{ material.unit }}</small>
+                            {% endwith %}
                         </div>
                         <div class="text-end">
-                            <small class="text-muted d-block" style="font-size: 0.75rem;">Ціна (сер.)</small>
-                            <span class="fw-bold">{{ mat.current_avg_price }} ₴</span>
+                            <small class="text-muted d-block text-uppercase" style="font-size: 0.65rem;">Ціна (сер.)</small>
+                            <span class="fw-bold text-dark">{{ material.current_avg_price|floatformat:2 }} ₴</span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         {% empty %}
-        <div class="col-12 text-center py-5">
-            <p class="text-muted">Матеріалів ще не додано.</p>
+        <div class="col-12">
+            <div class="text-center py-5 text-muted bg-light rounded">
+                <i class="bi bi-box-seam display-4 mb-3 d-block"></i>
+                <p class="mb-0">Матеріалів не знайдено.</p>
+                {% if request.GET.q %}
+                    <a href="{% url 'material_list' %}" class="btn btn-link">Скинути пошук</a>
+                {% endif %}
+            </div>
         </div>
         {% endfor %}
     </div>
+    
+    <!-- Pagination -->
+    {% if materials.has_other_pages %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center">
+                    {% if materials.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ materials.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">&laquo;</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">&laquo;</span>
+                    </li>
+                    {% endif %}
+
+                    {% for i in materials.paginator.page_range %}
+                        {% if materials.number == i %}
+                        <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                        {% elif i > materials.number|add:'-3' and i < materials.number|add:'3' %}
+                        <li class="page-item"><a class="page-link" href="?page={{ i }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">{{ i }}</a></li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if materials.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ materials.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">&raquo;</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">&raquo;</span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
-<script>
-    document.getElementById('searchInput').addEventListener('keyup', function(e) {
-        const term = e.target.value.toLowerCase();
-        document.querySelectorAll('.material-card').forEach(card => {
-            const text = card.getAttribute('data-name');
-            card.style.display = text.includes(term) ? 'block' : 'none';
-        });
-    });
-</script>
+<style>
+    .hover-shadow:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+</style>
 {% endblock %}
