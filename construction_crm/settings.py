@@ -143,7 +143,7 @@ DATABASES = {
 }
 
 # Перевірка наявності пароля БД у production
-if DJANGO_ENV == 'production' and not DATABASES['default']['PASSWORD']:
+if DJANGO_ENV == 'production' and not DATABASES['default']['PASSWORD'] and not IS_CHECK_OR_TEST:
     raise ValueError("DB_PASSWORD is required in production!")
 
 
@@ -185,8 +185,26 @@ STATICFILES_DIRS = [
     BASE_DIR / "static", # Переконайся, що папка існує
 ]
 
-# Whitenoise compression
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Whitenoise compression (Django 4.2+ syntax)
+# У тестах використовуємо простий storage без manifest
+if IS_CHECK_OR_TEST:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # Налаштування для завантаження файлів (фото)
 MEDIA_URL = '/media/'
@@ -212,7 +230,10 @@ LOGIN_URL = '/accounts/login/'
 if DJANGO_ENV == 'production':
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+    try:
+        EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+    except ValueError:
+        EMAIL_PORT = 587
     EMAIL_USE_TLS = parse_bool(os.getenv('EMAIL_USE_TLS', 'True'), True)
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
@@ -245,7 +266,10 @@ if DJANGO_ENV == 'production':
     
     # HSTS налаштування
     # Default 31536000 (1 рік) у prod. Env дозволяє налаштувати.
-    SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', 31536000))
+    try:
+        SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '31536000'))
+    except ValueError:
+        SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
