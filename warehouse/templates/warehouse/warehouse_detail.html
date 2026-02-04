@@ -4,161 +4,250 @@
 
 {% block extra_css %}
 <style>
-    /* Стилі для друку */
+    .stock-table-container {
+        max-height: 550px;
+        overflow-y: auto;
+    }
+    .stock-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #f8f9fa;
+    }
+    .history-table-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    .history-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #f8f9fa;
+    }
+    .transaction-row {
+        transition: background-color 0.15s;
+    }
+    .transaction-row:hover {
+        background-color: #f8f9fa;
+    }
+    .transaction-row.transfer {
+        background-color: rgba(13, 202, 240, 0.05);
+    }
+    .qty-in { color: #198754; font-weight: 600; }
+    .qty-out { color: #dc3545; font-weight: 600; }
+    .filter-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+    }
+    .stat-card {
+        border-radius: 12px;
+        border: none;
+        transition: transform 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+
     @media print {
         #sidebar, header, .no-print { display: none !important; }
         #content-wrapper { margin: 0 !important; padding: 0 !important; }
         body { background: white !important; }
         .card { border: none !important; box-shadow: none !important; }
-        .container, .container-fluid { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; }
-        .badge { border: 1px solid #000; color: #000 !important; }
-        a { text-decoration: none !important; color: black !important; }
-        .btn-view-details { display: none !important; }
-        /* Ховаємо форму фільтру при друці */
-        form { display: none !important; }
+        .container, .container-fluid { max-width: 100% !important; width: 100% !important; padding: 0 !important; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    
-    <!-- HEADER & BUTTONS -->
-    <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+
+    {# === HEADER === #}
+    <div class="d-flex justify-content-between align-items-start mb-4 no-print">
         <div>
-            <a href="{% url 'index' %}" class="btn btn-outline-secondary btn-sm mb-2">
-                <i class="bi bi-arrow-left"></i> На головну
-            </a>
-            <h3 class="fw-bold mb-0">{{ warehouse.name }}</h3>
-            {% if warehouse.budget_limit > 0 %}
-                <small class="text-muted">Ліміт бюджету: {{ warehouse.budget_limit }} ₴</small>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb small mb-2">
+                    <li class="breadcrumb-item"><a href="{% url 'index' %}" class="text-decoration-none">Головна</a></li>
+                    <li class="breadcrumb-item active">{{ warehouse.name }}</li>
+                </ol>
+            </nav>
+            <h1 class="h4 fw-bold text-dark mb-1">{{ warehouse.name }}</h1>
+            {% if warehouse.address %}
+                <p class="text-muted small mb-0"><i class="bi bi-geo-alt me-1"></i>{{ warehouse.address }}</p>
             {% endif %}
         </div>
-        <div class="btn-group">
+        <div class="d-flex gap-2">
             <button onclick="window.print()" class="btn btn-outline-dark">
-                <i class="bi bi-printer"></i> Друк
+                <i class="bi bi-printer me-1"></i>Друк
             </button>
             {% if user.is_staff %}
-                <a href="{% url 'add_transaction' %}?warehouse={{ warehouse.id }}" class="btn btn-success">
-                    <i class="bi bi-plus-lg"></i> Транзакція
-                </a>
+            <a href="{% url 'add_transaction' %}?warehouse={{ warehouse.id }}" class="btn btn-success">
+                <i class="bi bi-plus-lg me-1"></i>Транзакція
+            </a>
             {% endif %}
         </div>
     </div>
 
+    {# === STATS ROW === #}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card stat-card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small text-uppercase fw-bold mb-1">Позицій</div>
+                    <div class="fs-3 fw-bold text-primary">{{ stock_list|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small text-uppercase fw-bold mb-1">Вартість</div>
+                    <div class="fs-3 fw-bold text-success">{{ total_value|floatformat:0 }} ₴</div>
+                </div>
+            </div>
+        </div>
+        {% if warehouse.budget_limit > 0 %}
+        <div class="col-6 col-md-3">
+            <div class="card stat-card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small text-uppercase fw-bold mb-1">Ліміт</div>
+                    <div class="fs-3 fw-bold text-dark">{{ warehouse.budget_limit|floatformat:0 }} ₴</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="col-6 col-md-3">
+            <div class="card stat-card shadow-sm h-100">
+                <div class="card-body text-center py-3">
+                    <div class="text-muted small text-uppercase fw-bold mb-1">Транзакцій</div>
+                    <div class="fs-3 fw-bold text-secondary">{{ transactions|length }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-4">
-        
-        <!-- 1. ПОТОЧНІ ЗАЛИШКИ (STOCK BALANCE) -->
+
+        {# === STOCK BALANCE === #}
         <div class="col-lg-5">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white border-0 fw-bold d-flex justify-content-between align-items-center">
-                    <span>📦 Поточні залишки</span>
+                <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-box-seam me-2 text-primary"></i>Поточні залишки
+                    </h5>
                     <span class="badge bg-primary rounded-pill">{{ stock_list|length }}</span>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
-                        <table class="table table-hover mb-0 align-middle">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th class="ps-3">Матеріал</th>
-                                    <th class="text-center">К-сть</th>
-                                    <th class="text-end pe-3">Сума (₴)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in stock_list %}
-                                <tr>
-                                    <td class="ps-3">
-                                        <div class="fw-bold text-dark">{{ item.name }}</div>
-                                        <div class="small text-muted">{{ item.unit }}</div>
-                                        {% if item.status == 'critical' %}
-                                            <span class="badge bg-danger">Мало!</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-center fw-bold fs-5">
+                <div class="card-body p-0 stock-table-container">
+                    <table class="table table-hover mb-0 align-middle stock-table">
+                        <thead>
+                            <tr class="text-muted small text-uppercase">
+                                <th class="ps-3 fw-semibold">Матеріал</th>
+                                <th class="text-center fw-semibold">К-сть</th>
+                                <th class="text-end pe-3 fw-semibold">Сума</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in stock_list %}
+                            <tr>
+                                <td class="ps-3">
+                                    <div class="fw-bold text-dark">{{ item.name }}</div>
+                                    <small class="text-muted">{{ item.unit }}</small>
+                                    {% if item.status == 'critical' %}
+                                        <span class="badge bg-danger ms-1">Мало!</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="fs-5 fw-bold {% if item.status == 'critical' %}text-danger{% else %}text-dark{% endif %}">
                                         {{ item.quantity|floatformat:2 }}
-                                    </td>
-                                    <td class="text-end pe-3 small text-muted">
-                                        {{ item.total_sum|floatformat:2 }}
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted py-4">Склад порожній</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                            {% if stock_list %}
-                            <tfoot class="table-light sticky-bottom">
-                                <tr>
-                                    <td colspan="2" class="text-end fw-bold">Всього:</td>
-                                    <td class="text-end fw-bold pe-3 text-success">{{ total_value|floatformat:2 }} ₴</td>
-                                </tr>
-                            </tfoot>
-                            {% endif %}
-                        </table>
-                    </div>
+                                    </span>
+                                </td>
+                                <td class="text-end pe-3 text-muted">
+                                    {{ item.total_sum|floatformat:2 }} ₴
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="3" class="text-center py-5">
+                                    <div class="text-muted">
+                                        <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                                        <p class="mb-0">Склад порожній</p>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        {% if stock_list %}
+                        <tfoot class="bg-light">
+                            <tr>
+                                <td colspan="2" class="text-end fw-bold ps-3">Всього:</td>
+                                <td class="text-end fw-bold pe-3 text-success fs-5">{{ total_value|floatformat:2 }} ₴</td>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- 2. ІСТОРІЯ ТРАНЗАКЦІЙ (TRANSACTION HISTORY) -->
+        {# === TRANSACTION HISTORY === #}
         <div class="col-lg-7">
             <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white border-0 fw-bold">
-                    🕘 Історія руху
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-clock-history me-2 text-secondary"></i>Історія руху
+                    </h5>
                 </div>
-                
-                <!-- Фільтри -->
-                <div class="p-3 bg-light border-bottom no-print">
-                    <form method="get" class="row g-2">
+
+                {# Filters #}
+                <div class="px-3 pb-3 no-print">
+                    <form method="get" class="row g-2 align-items-end filter-card p-2 rounded">
                         <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted mb-1">З дати</label>
                             <input type="date" name="date_from" class="form-control form-control-sm" value="{{ f_date_from|default:'' }}">
                         </div>
                         <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted mb-1">По дату</label>
                             <input type="date" name="date_to" class="form-control form-control-sm" value="{{ f_date_to|default:'' }}">
                         </div>
                         <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted mb-1">Тип</label>
                             <select name="type" class="form-select form-select-sm">
                                 <option value="">Всі типи</option>
                                 <option value="IN" {% if f_type == 'IN' %}selected{% endif %}>Прихід</option>
-                                <option value="OUT" {% if f_type == 'OUT' %}selected{% endif %}>Витрата/Роботи</option>
+                                <option value="OUT" {% if f_type == 'OUT' %}selected{% endif %}>Витрата</option>
                                 <option value="LOSS" {% if f_type == 'LOSS' %}selected{% endif %}>Втрати</option>
-                                <!-- 🔥 ОНОВЛЕНО: value="MOVE" -->
                                 <option value="MOVE" {% if f_type == 'MOVE' %}selected{% endif %}>Переміщення</option>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <button type="submit" class="btn btn-sm btn-primary w-100">Фільтр</button>
+                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                <i class="bi bi-funnel me-1"></i>Фільтр
+                            </button>
                         </div>
                     </form>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0 align-middle small">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="ps-3">Дата</th>
-                                <th>Дія</th>
-                                <th>Матеріал</th>
-                                <th>К-сть</th>
-                                <th>Коментар</th>
-                                <th class="text-end no-print"></th>
+                <div class="history-table-container">
+                    <table class="table table-hover mb-0 align-middle small history-table">
+                        <thead>
+                            <tr class="text-muted text-uppercase">
+                                <th class="ps-3 fw-semibold">Дата</th>
+                                <th class="fw-semibold">Тип</th>
+                                <th class="fw-semibold">Матеріал</th>
+                                <th class="fw-semibold">К-сть</th>
+                                <th class="fw-semibold">Коментар</th>
+                                <th class="pe-3 no-print"></th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for tr in transactions %}
-                            <!-- Приховуємо IN-трансфери, щоб не дублювати -->
                             {% if not tr.transfer_group_id or tr.transaction_type == 'OUT' %}
-                            <tr class="{% if tr.transfer_group_id %}table-info bg-opacity-10{% endif %}">
-                                <td class="ps-3 text-muted" style="white-space: nowrap;">
-                                    {{ tr.date|date:"d.m.y" }}
-                                    <div style="font-size: 0.7em;">{{ tr.created_at|date:"H:i" }}</div>
+                            <tr class="transaction-row {% if tr.transfer_group_id %}transfer{% endif %}">
+                                <td class="ps-3 text-nowrap">
+                                    <div class="text-dark">{{ tr.date|date:"d.m.y" }}</div>
+                                    <div class="text-muted" style="font-size: 0.7rem;">{{ tr.created_at|date:"H:i" }}</div>
                                 </td>
                                 <td>
-                                    <!-- ЛОГІКА БЕЙДЖІВ -->
                                     {% if tr.transfer_group_id %}
-                                        <span class="badge bg-info text-dark border border-info">Переміщення</span>
+                                        <span class="badge bg-info text-dark">Переміщення</span>
                                     {% elif tr.transaction_type == 'IN' %}
                                         <span class="badge bg-success">Прихід</span>
                                     {% elif tr.transaction_type == 'OUT' %}
@@ -167,24 +256,21 @@
                                         <span class="badge bg-danger">Втрата</span>
                                     {% endif %}
                                 </td>
-                                <td class="fw-bold text-dark">
-                                    {{ tr.material.name }}
-                                </td>
+                                <td class="fw-bold text-dark">{{ tr.material.name|truncatechars:30 }}</td>
                                 <td>
-                                    <span class="fw-bold {% if tr.transaction_type == 'IN' %}text-success{% else %}text-danger{% endif %}">
+                                    <span class="{% if tr.transaction_type == 'IN' %}qty-in{% else %}qty-out{% endif %}">
                                         {% if tr.transaction_type == 'IN' %}+{% else %}-{% endif %}{{ tr.quantity|floatformat:2 }}
                                     </span>
-                                    <small class="text-muted">{{ tr.material.unit }}</small>
+                                    <small class="text-muted ms-1">{{ tr.material.unit }}</small>
                                 </td>
-                                <td class="text-muted text-truncate" style="max-width: 150px;" title="{{ tr.description }}">
+                                <td class="text-muted text-truncate" style="max-width: 120px;" title="{{ tr.description }}">
                                     {% if tr.transfer_group_id %}
-                                        <i class="bi bi-arrow-right-circle me-1"></i> {{ tr.description|default:"Переміщення" }}
-                                    {% else %}
-                                        {{ tr.description|default:"-" }}
+                                        <i class="bi bi-arrow-right-circle me-1"></i>
                                     {% endif %}
+                                    {{ tr.description|default:"—" }}
                                 </td>
-                                <td class="text-end no-print pe-3">
-                                    <a href="{% url 'transaction_detail' tr.id %}" class="btn btn-sm btn-light text-secondary border-0">
+                                <td class="text-end pe-3 no-print">
+                                    <a href="{% url 'transaction_detail' tr.id %}" class="btn btn-sm btn-light text-secondary">
                                         <i class="bi bi-chevron-right"></i>
                                     </a>
                                 </td>
@@ -192,9 +278,11 @@
                             {% endif %}
                             {% empty %}
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-5">
-                                    <i class="bi bi-clock-history fs-1 mb-2 d-block opacity-25"></i>
-                                    Руху матеріалів ще не було
+                                <td colspan="6" class="text-center py-5">
+                                    <div class="text-muted">
+                                        <i class="bi bi-clock-history fs-1 d-block mb-2 opacity-50"></i>
+                                        <p class="mb-0">Руху матеріалів ще не було</p>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}

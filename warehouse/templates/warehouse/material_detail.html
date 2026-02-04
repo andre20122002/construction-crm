@@ -2,88 +2,188 @@
 
 {% block title %}{{ material.name }}{% endblock %}
 
+{% block extra_css %}
+<style>
+    .summary-card {
+        background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+        border-radius: 16px;
+        color: white;
+    }
+    .summary-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .detail-card {
+        border: none;
+        border-radius: 12px;
+    }
+    .stock-item {
+        transition: background-color 0.15s;
+    }
+    .stock-item:hover {
+        background-color: #f8f9fa;
+    }
+    .history-table thead {
+        position: sticky;
+        top: 0;
+        background: #f8f9fa;
+        z-index: 10;
+    }
+    .history-container {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .type-badge {
+        font-size: 0.7rem;
+        padding: 0.25em 0.5em;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-4 mb-5" style="max-width: 900px;">
-    
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h4 class="mb-0">
-            <span class="text-muted">Арт. {{ material.article }}</span> / {{ material.name }}
-        </h4>
-        <a href="{% url 'material_list' %}" class="btn btn-outline-secondary btn-sm">В каталог</a>
+<div class="container mt-4 mb-5" style="max-width: 1000px;">
+
+    {# === HEADER === #}
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb small mb-2">
+                    <li class="breadcrumb-item"><a href="{% url 'material_list' %}" class="text-decoration-none">Матеріали</a></li>
+                    <li class="breadcrumb-item active">{{ material.name|truncatechars:30 }}</li>
+                </ol>
+            </nav>
+            <h1 class="h4 fw-bold text-dark mb-1">{{ material.name }}</h1>
+            <p class="text-muted mb-0">
+                <span class="badge bg-light text-dark border me-2">{{ material.category.name|default:"Без категорії" }}</span>
+                <span class="font-monospace small">Арт. {{ material.article }}</span>
+            </p>
+        </div>
+        <a href="{% url 'material_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>До каталогу
+        </a>
     </div>
 
-    <!-- КАРТКА ПІДСУМКІВ -->
-    <div class="card border-0 shadow-sm bg-primary text-white mb-4">
+    {# === SUMMARY CARD === #}
+    <div class="card summary-card shadow mb-4">
         <div class="card-body p-4">
             <div class="row text-center">
-                <div class="col-6 border-end border-white border-opacity-25">
-                    <div class="opacity-75 small text-uppercase">Загальна кількість</div>
-                    <div class="display-5 fw-bold">{{ total_quantity }} <span class="fs-4">{{ material.unit }}</span></div>
+                <div class="col-md-4 border-end border-white border-opacity-25">
+                    <div class="opacity-75 small text-uppercase mb-1">Загальна кількість</div>
+                    <div class="summary-value">
+                        {{ total_quantity|floatformat:2 }}
+                        <span class="fs-5 opacity-75">{{ material.unit }}</span>
+                    </div>
                 </div>
-                <div class="col-6">
-                    <div class="opacity-75 small text-uppercase">Оціночна вартість</div>
-                    <div class="display-5 fw-bold">{{ total_value }} <span class="fs-4">₴</span></div>
-                    <small class="opacity-50">Середня: {{ material.current_avg_price }} ₴/{{ material.unit }}</small>
+                <div class="col-md-4 border-end border-white border-opacity-25">
+                    <div class="opacity-75 small text-uppercase mb-1">Оціночна вартість</div>
+                    <div class="summary-value">
+                        {{ total_value|floatformat:0 }}
+                        <span class="fs-5 opacity-75">₴</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="opacity-75 small text-uppercase mb-1">Середня ціна</div>
+                    <div class="summary-value">
+                        {{ material.current_avg_price|floatformat:2 }}
+                        <span class="fs-5 opacity-75">₴/{{ material.unit }}</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="row g-4">
-        <!-- ЛІВА КОЛОНКА: РОЗПОДІЛ ПО СКЛАДАХ -->
+        {# === STOCK DISTRIBUTION === #}
         <div class="col-md-5">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white fw-bold border-bottom-0 pt-3">
-                    📍 Наявність на об'єктах
+            <div class="card detail-card shadow-sm h-100">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-geo-alt me-2 text-primary"></i>Наявність на об'єктах
+                    </h5>
                 </div>
                 <ul class="list-group list-group-flush">
                     {% for item in stock_distribution %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center py-3">
-                        <span>{{ item.warehouse }}</span>
-                        <span class="badge bg-light text-dark border fs-6">{{ item.quantity }} {{ material.unit }}</span>
+                    <li class="list-group-item stock-item d-flex justify-content-between align-items-center py-3">
+                        <div>
+                            <span class="fw-bold text-dark">{{ item.warehouse }}</span>
+                        </div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary fs-6 px-3">
+                            {{ item.quantity|floatformat:2 }} {{ material.unit }}
+                        </span>
                     </li>
                     {% empty %}
-                    <li class="list-group-item text-center text-muted py-4">Немає на залишках</li>
+                    <li class="list-group-item text-center py-5">
+                        <div class="text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                            <p class="mb-0">Немає на залишках</p>
+                        </div>
+                    </li>
                     {% endfor %}
                 </ul>
+                {% if stock_distribution %}
+                <div class="card-footer bg-light text-end py-3">
+                    <span class="fw-bold">Всього: {{ total_quantity|floatformat:2 }} {{ material.unit }}</span>
+                </div>
+                {% endif %}
             </div>
         </div>
 
-        <!-- ПРАВА КОЛОНКА: ІСТОРІЯ РУХУ -->
+        {# === TRANSACTION HISTORY === #}
         <div class="col-md-7">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white fw-bold border-bottom-0 pt-3">
-                    🕘 Останні операції
+            <div class="card detail-card shadow-sm h-100">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-clock-history me-2 text-secondary"></i>Останні операції
+                    </h5>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0 align-middle">
-                        <thead class="table-light">
-                            <tr>
-                                <th class="ps-3">Дата</th>
-                                <th>Дія</th>
-                                <th>Склад</th>
-                                <th>Кількість</th>
-                                <th>Коментар</th>
+                <div class="history-container">
+                    <table class="table table-hover mb-0 align-middle history-table">
+                        <thead>
+                            <tr class="text-muted small text-uppercase">
+                                <th class="ps-3 fw-semibold">Дата</th>
+                                <th class="fw-semibold">Тип</th>
+                                <th class="fw-semibold">Склад</th>
+                                <th class="text-end fw-semibold">К-сть</th>
+                                <th class="pe-3 fw-semibold">Коментар</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for tr in transactions %}
                             <tr>
-                                <td class="ps-3 text-muted small">{{ tr.created_at|date:"d.m.Y H:i" }}</td>
+                                <td class="ps-3 text-muted small text-nowrap">
+                                    {{ tr.created_at|date:"d.m.Y" }}
+                                    <div style="font-size: 0.7rem;">{{ tr.created_at|date:"H:i" }}</div>
+                                </td>
                                 <td>
                                     {% if tr.transfer_group_id %}
-                                        <span class="badge bg-info text-dark">Переміщення</span>
+                                        <span class="badge bg-info text-dark type-badge">Переміщення</span>
                                     {% elif tr.transaction_type == 'IN' %}
-                                        <span class="badge bg-success text-white">Прихід</span>
+                                        <span class="badge bg-success type-badge">Прихід</span>
                                     {% elif tr.transaction_type == 'OUT' %}
-                                        <span class="badge bg-danger text-white">Витрата</span>
+                                        <span class="badge bg-warning text-dark type-badge">Витрата</span>
                                     {% elif tr.transaction_type == 'LOSS' %}
-                                        <span class="badge bg-danger text-white">Втрата</span>
+                                        <span class="badge bg-danger type-badge">Втрата</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ tr.warehouse.name }}</td>
-                                <td class="fw-bold">{{ tr.quantity }}</td>
-                                <td class="text-muted small text-truncate" style="max-width: 250px;">{{ tr.description|default:"-" }}</td>
+                                <td class="small">{{ tr.warehouse.name|truncatechars:20 }}</td>
+                                <td class="text-end">
+                                    <span class="fw-bold {% if tr.transaction_type == 'IN' %}text-success{% else %}text-danger{% endif %}">
+                                        {% if tr.transaction_type == 'IN' %}+{% else %}-{% endif %}{{ tr.quantity|floatformat:2 }}
+                                    </span>
+                                </td>
+                                <td class="pe-3 text-muted small text-truncate" style="max-width: 150px;" title="{{ tr.description }}">
+                                    {{ tr.description|default:"—" }}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center py-5">
+                                    <div class="text-muted">
+                                        <i class="bi bi-clock-history fs-1 d-block mb-2 opacity-50"></i>
+                                        <p class="mb-0">Операцій поки немає</p>
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -92,5 +192,37 @@
             </div>
         </div>
     </div>
+
+    {# === ADDITIONAL INFO === #}
+    {% if material.characteristics or material.min_limit > 0 %}
+    <div class="card detail-card shadow-sm mt-4">
+        <div class="card-header bg-white border-0 py-3">
+            <h5 class="mb-0 fw-bold">
+                <i class="bi bi-info-circle me-2 text-info"></i>Додаткова інформація
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% if material.characteristics %}
+                <div class="col-md-6 mb-3">
+                    <label class="form-label small fw-bold text-muted">Характеристики</label>
+                    <p class="mb-0">{{ material.characteristics }}</p>
+                </div>
+                {% endif %}
+                {% if material.min_limit > 0 %}
+                <div class="col-md-6 mb-3">
+                    <label class="form-label small fw-bold text-muted">Мінімальний ліміт</label>
+                    <p class="mb-0">
+                        <span class="badge bg-warning text-dark">{{ material.min_limit }} {{ material.unit }}</span>
+                        {% if total_quantity <= material.min_limit %}
+                            <span class="badge bg-danger ms-2">Критично низький рівень!</span>
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

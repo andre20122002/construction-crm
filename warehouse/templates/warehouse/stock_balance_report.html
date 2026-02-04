@@ -5,91 +5,168 @@
 
 {% block extra_css %}
 <style>
-    .filter-card { background-color: #fff; border: 1px solid #dee2e6; }
+    .filter-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+    }
+    .table-container {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .stock-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #f8f9fa;
+    }
+    .stock-row {
+        transition: background-color 0.15s;
+    }
+    .stock-row:hover {
+        background-color: #f8f9fa;
+    }
+    .stock-row.critical {
+        background-color: #fff5f5;
+    }
+    .total-card {
+        background: linear-gradient(135deg, #198754 0%, #157347 100%);
+        border-radius: 12px;
+        color: white;
+    }
+    .characteristics-badge {
+        font-size: 0.7rem;
+        padding: 0.2em 0.5em;
+    }
+    @media print {
+        .no-print { display: none !important; }
+        .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="h4 fw-bold"><i class="bi bi-box-seam me-2"></i> Залишки на складах</h3>
-        <div class="text-end">
-            <div class="text-muted small text-uppercase">Загальна вартість</div>
-            <div class="fs-4 fw-bold text-success">{{ total_value }} ₴</div>
+
+    {# === HEADER === #}
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="h4 fw-bold text-dark mb-1">
+                <i class="bi bi-box-seam me-2 text-primary"></i>Залишки на складах
+            </h1>
+            <p class="text-muted small mb-0">Поточний стан матеріалів по всіх об'єктах</p>
+        </div>
+        <div class="total-card p-3 text-center">
+            <div class="small opacity-75 text-uppercase">Загальна вартість</div>
+            <div class="fs-4 fw-bold">{{ total_value|default:"0" }} ₴</div>
         </div>
     </div>
 
-    <!-- Фільтри -->
-    <div class="card shadow-sm mb-4 border-0 filter-card no-print">
+    {# === FILTERS === #}
+    <div class="card filter-card shadow-sm mb-4 border-0 no-print">
         <div class="card-body py-3">
             <form method="get" class="row g-3 align-items-end">
-                <div class="col-md-3">
-                    <label class="small fw-bold text-muted">Склад</label>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Склад / Об'єкт</label>
                     <select name="warehouse" class="form-select">
-                        <option value="">-- Всі --</option>
+                        <option value="">Всі склади</option>
                         {% for w in warehouses %}
                             <option value="{{ w.id }}" {% if selected_wh == w.id %}selected{% endif %}>{{ w.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                
-                <div class="col-md-2 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-search me-1"></i> Показати
-                    </button>
-                    <!-- Кнопка експорту -->
-                    <button type="submit" name="export" value="excel" class="btn btn-success" title="Експорт в Excel">
-                        <i class="bi bi-file-earmark-excel"></i>
-                    </button>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Категорія</label>
+                    <select name="category" class="form-select">
+                        <option value="">Всі категорії</option>
+                        {% for c in categories %}
+                            <option value="{{ c.id }}" {% if selected_cat == c.id %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-grow-1">
+                            <i class="bi bi-search me-1"></i>Показати
+                        </button>
+                        <button type="submit" name="export" value="excel" class="btn btn-success" title="Експорт в Excel">
+                            <i class="bi bi-file-earmark-excel"></i>
+                        </button>
+                        <button type="button" onclick="window.print()" class="btn btn-outline-dark" title="Друк">
+                            <i class="bi bi-printer"></i>
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Таблиця -->
-    <div class="card shadow-sm border-0">
-        <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold">Список матеріалів</h5>
-            <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
-                <i class="bi bi-printer me-2"></i> Друк
-            </button>
+    {# === TABLE === #}
+    <div class="card shadow-sm border-0 table-container">
+        <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center no-print">
+            <h5 class="mb-0 fw-bold">
+                <i class="bi bi-list-ul me-2 text-secondary"></i>Список матеріалів
+            </h5>
+            <span class="badge bg-primary rounded-pill">{{ report_data|length }} позицій</span>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-3">Склад</th>
-                        <th>Матеріал / Характеристики</th>
-                        <th class="text-center">Кількість</th>
-                        <th class="text-center">Од.</th>
-                        <th class="text-end">Ціна</th>
-                        <th class="text-end pe-3">Сума</th>
+            <table class="table table-hover align-middle mb-0 stock-table">
+                <thead>
+                    <tr class="text-muted small text-uppercase">
+                        <th class="ps-3 fw-semibold">Склад</th>
+                        <th class="fw-semibold">Матеріал</th>
+                        <th class="text-end fw-semibold">Кількість</th>
+                        <th class="text-center fw-semibold">Од.</th>
+                        <th class="text-end fw-semibold">Ціна</th>
+                        <th class="text-end pe-3 fw-semibold">Сума</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in report_data %}
-                    <tr>
-                        <td class="ps-3"><small class="text-muted fw-bold">{{ row.warehouse }}</small></td>
+                    <tr class="stock-row {% if row.status == 'critical' %}critical{% endif %}">
+                        <td class="ps-3">
+                            <span class="text-muted fw-bold small">{{ row.warehouse }}</span>
+                        </td>
                         <td>
-                            <div class="fw-bold">{{ row.material }}</div>
+                            <div class="fw-bold text-dark">{{ row.material }}</div>
                             {% if row.characteristics %}
-                                <span class="badge bg-info text-dark bg-opacity-25 border border-info">
+                                <span class="badge bg-info bg-opacity-10 text-info border border-info characteristics-badge">
                                     {{ row.characteristics }}
                                 </span>
                             {% endif %}
                             {% if row.status == 'critical' %}
-                                <span class="badge bg-danger ms-2">Мало!</span>
+                                <span class="badge bg-danger ms-1">Критично!</span>
                             {% endif %}
                         </td>
-                        <td class="text-center fs-5 fw-bold">{{ row.quantity|floatformat:2 }}</td>
+                        <td class="text-end">
+                            <span class="fs-5 fw-bold {% if row.status == 'critical' %}text-danger{% else %}text-dark{% endif %}">
+                                {{ row.quantity|floatformat:2 }}
+                            </span>
+                        </td>
                         <td class="text-center text-muted small">{{ row.unit }}</td>
-                        <td class="text-end">{{ row.avg_price }}</td>
-                        <td class="text-end pe-3 fw-bold">{{ row.total_sum }}</td>
+                        <td class="text-end text-muted">{{ row.avg_price|floatformat:2 }} ₴</td>
+                        <td class="text-end pe-3 fw-bold">{{ row.total_sum|floatformat:2 }} ₴</td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="6" class="text-center py-5 text-muted">Залишків не знайдено.</td></tr>
+                    <tr>
+                        <td colspan="6" class="text-center py-5">
+                            <div class="text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                                <p class="mb-0 fw-bold">Залишків не знайдено</p>
+                                <small>Спробуйте змінити фільтри</small>
+                            </div>
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
+                {% if report_data %}
+                <tfoot class="bg-light">
+                    <tr>
+                        <td colspan="5" class="text-end fw-bold ps-3">Всього:</td>
+                        <td class="text-end pe-3 fw-bold fs-5 text-success">{{ total_value|floatformat:2 }} ₴</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
     </div>

@@ -1,91 +1,194 @@
 {% extends 'warehouse/base.html' %}
 {% load static %}
 
-{% block title %}Топ постачальників{% endblock %}
+{% block title %}Рейтинг постачальників{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filter-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+    }
+    .table-container {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .supplier-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #f8f9fa;
+    }
+    .supplier-row {
+        transition: background-color 0.15s;
+    }
+    .supplier-row:hover {
+        background-color: #f8f9fa;
+    }
+    .reliability-bar {
+        height: 10px;
+        border-radius: 5px;
+        overflow: hidden;
+        background: #e9ecef;
+    }
+    .reliability-fill {
+        height: 100%;
+        border-radius: 5px;
+        transition: width 0.5s ease;
+    }
+    .reliability-success { background: linear-gradient(90deg, #198754, #20c997); }
+    .reliability-warning { background: linear-gradient(90deg, #ffc107, #fd7e14); }
+    .reliability-danger { background: linear-gradient(90deg, #dc3545, #fd7e14); }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <h3 class="mb-4 fw-bold"><i class="bi bi-award-fill me-2"></i> Рейтинг постачальників</h3>
 
-    <!-- ФІЛЬТРИ -->
-    <div class="card shadow-sm mb-4 border-0 bg-light no-print">
+    {# === HEADER === #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h4 fw-bold text-dark mb-1">
+                <i class="bi bi-award-fill me-2 text-warning"></i>Рейтинг постачальників
+            </h1>
+            <p class="text-muted small mb-0">Аналіз надійності та ефективності партнерів</p>
+        </div>
+        <button onclick="window.print()" class="btn btn-outline-dark no-print">
+            <i class="bi bi-printer me-2"></i>Друк
+        </button>
+    </div>
+
+    {# === FILTERS === #}
+    <div class="card filter-card shadow-sm mb-4 border-0 no-print">
         <div class="card-body py-3">
-            <form method="get" class="row g-2 align-items-end">
+            <form method="get" class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="small fw-bold text-muted">Аналіз з дати:</label>
+                    <label class="form-label small fw-bold text-muted">Аналіз з дати</label>
                     <input type="date" name="date_from" class="form-control" value="{{ date_from|default:'' }}">
                 </div>
                 <div class="col-md-3">
-                    <label class="small fw-bold text-muted">по дату:</label>
+                    <label class="form-label small fw-bold text-muted">по дату</label>
                     <input type="date" name="date_to" class="form-control" value="{{ date_to|default:'' }}">
                 </div>
                 <div class="col-md-3">
-                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Аналізувати</button>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search me-1"></i>Аналізувати
+                    </button>
                 </div>
-                <div class="col-md-3 text-end">
-                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-secondary w-100">Скинути</a>
+                <div class="col-md-3">
+                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-secondary w-100">
+                        <i class="bi bi-x-lg me-1"></i>Скинути
+                    </a>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- ТАБЛИЦЯ -->
-    <div class="card shadow-sm border-0">
-        <div class="card-header bg-white border-0 py-3">
-            <h5 class="mb-0 fw-bold">Список постачальників</h5>
+    {# === TABLE === #}
+    <div class="card shadow-sm border-0 table-container">
+        <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">
+                <i class="bi bi-people me-2 text-secondary"></i>Список постачальників
+            </h5>
+            <span class="badge bg-primary rounded-pill">{{ report_data|length }} партнерів</span>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-4">Назва</th>
-                        <th>Контакт</th>
-                        <th class="text-center">Замовлень</th>
-                        <th style="width: 30%;">Надійність</th>
+            <table class="table table-hover align-middle mb-0 supplier-table">
+                <thead>
+                    <tr class="text-muted small text-uppercase">
+                        <th class="ps-3 fw-semibold" style="width: 40px;">#</th>
+                        <th class="fw-semibold">Назва</th>
+                        <th class="fw-semibold">Контакт</th>
+                        <th class="text-center fw-semibold" style="width: 100px;">Замовлень</th>
+                        <th class="fw-semibold" style="width: 250px;">Надійність</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in report_data %}
-                    <tr>
-                        <td class="ps-4 fw-bold text-dark">{{ row.name }}</td>
-                        <td class="text-muted small">{{ row.contact }}</td>
-                        <td class="text-center">
-                            <span class="badge bg-light text-dark border">{{ row.orders_count }}</span>
+                    <tr class="supplier-row">
+                        <td class="ps-3">
+                            {% if forloop.counter == 1 %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-trophy-fill"></i></span>
+                            {% elif forloop.counter == 2 %}
+                                <span class="badge bg-secondary">2</span>
+                            {% elif forloop.counter == 3 %}
+                                <span class="badge bg-danger bg-opacity-75">3</span>
+                            {% else %}
+                                <span class="text-muted small">{{ forloop.counter }}</span>
+                            {% endif %}
                         </td>
-                        <td class="pe-4">
-                            <div class="d-flex align-items-center">
-                                <span class="small fw-bold me-2" style="min-width: 40px;">{{ row.reliability }}%</span>
-                                <div class="progress flex-grow-1" style="height: 8px;">
-                                    <!-- data-width використовується JS для встановлення ширини -->
-                                    <div class="progress-bar bg-{{ row.rel_class }}" role="progressbar" data-width="{{ row.reliability }}"></div>
+                        <td>
+                            <div class="fw-bold text-dark">{{ row.name }}</div>
+                        </td>
+                        <td>
+                            {% if row.contact %}
+                                <span class="text-muted small">{{ row.contact }}</span>
+                            {% else %}
+                                <span class="text-muted small fst-italic">Не вказано</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary fs-6">
+                                {{ row.orders_count }}
+                            </span>
+                        </td>
+                        <td class="pe-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-bold {% if row.reliability >= 80 %}text-success{% elif row.reliability >= 50 %}text-warning{% else %}text-danger{% endif %}" style="min-width: 45px;">
+                                    {{ row.reliability }}%
+                                </span>
+                                <div class="reliability-bar flex-grow-1">
+                                    <div class="reliability-fill {% if row.reliability >= 80 %}reliability-success{% elif row.reliability >= 50 %}reliability-warning{% else %}reliability-danger{% endif %}"
+                                         style="width: 0%;"
+                                         data-width="{{ row.reliability }}">
+                                    </div>
                                 </div>
                             </div>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="6" class="text-center py-5 text-muted">
-                            <i class="bi bi-people-fill fs-1 opacity-50 mb-2"></i><br>
-                            Даних про постачальників за цей період немає.
+                        <td colspan="5" class="text-center py-5">
+                            <div class="text-muted">
+                                <i class="bi bi-people-fill fs-1 d-block mb-2 opacity-50"></i>
+                                <p class="mb-0 fw-bold">Немає даних про постачальників</p>
+                                <small>Змініть параметри фільтру</small>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        <div class="card-footer bg-light small text-muted">
-            * <b>Надійність</b> розраховується як відсоток успішних поставок (без відмов, значних затримок або нестач).
+        {% if report_data %}
+        <div class="card-footer bg-light py-3">
+            <div class="d-flex align-items-center gap-4 small text-muted">
+                <div><span class="badge bg-success me-1">&nbsp;</span> Надійний (80%+)</div>
+                <div><span class="badge bg-warning me-1">&nbsp;</span> Середній (50-79%)</div>
+                <div><span class="badge bg-danger me-1">&nbsp;</span> Низький (&lt;50%)</div>
+            </div>
+            <div class="mt-2 small text-muted">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Надійність</strong> — відсоток успішних поставок без відмов, затримок або нестач.
+            </div>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<!-- Логіка графіків та прогрес-барів -->
 <script src="{% static 'warehouse/js/suppliers_charts.js' %}"></script>
-
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Animate reliability bars
+        setTimeout(function() {
+            document.querySelectorAll('.reliability-fill').forEach(function(bar) {
+                bar.style.width = bar.dataset.width + '%';
+            });
+        }, 100);
+
         if (window.SuppliersCharts) {
             window.SuppliersCharts.init();
         }

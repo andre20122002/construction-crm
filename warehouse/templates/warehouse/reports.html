@@ -3,75 +3,215 @@
 
 {% block title %}Фінансова аналітика - БудСклад{% endblock %}
 
+{% block extra_css %}
+<style>
+    .chart-card {
+        border: none;
+        border-radius: 12px;
+        transition: all 0.2s;
+    }
+    .chart-card:hover {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    }
+    .kpi-card {
+        border: none;
+        border-radius: 12px;
+    }
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .kpi-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        color: #6c757d;
+    }
+    .chart-container {
+        position: relative;
+        height: 280px;
+    }
+    .empty-chart {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #6c757d;
+    }
+    .empty-chart i {
+        font-size: 3rem;
+        opacity: 0.3;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <h3 class="h4 mb-4">📊 Фінансова аналітика</h3>
 
-    <div class="row g-4 mb-4">
-        <!-- ГРАФІК 1: ВИТРАТИ ПО ОБ'ЄКТАХ -->
-        <div class="col-lg-6">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-header bg-white border-0 fw-bold">
-                    💸 Витрати по об'єктах (Списання)
-                </div>
+    {# === HEADER === #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h4 fw-bold text-dark mb-1">
+                <i class="bi bi-bar-chart-line me-2 text-primary"></i>Фінансова аналітика
+            </h1>
+            <p class="text-muted small mb-0">Огляд витрат та динаміки закупівель</p>
+        </div>
+        <button class="btn btn-outline-dark no-print" onclick="window.print()">
+            <i class="bi bi-printer me-2"></i>Друкувати
+        </button>
+    </div>
+
+    {# === KPI CARDS === #}
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card kpi-card shadow-sm h-100">
                 <div class="card-body">
-                    <canvas id="whChart" style="max-height: 300px;"></canvas>
-                    <div class="text-muted small mt-2 d-none text-center" data-empty-msg="wh">Немає даних про списання</div>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="kpi-label mb-2">Всього витрачено</div>
+                            <div class="kpi-value text-dark">{{ total_spent|default:"0" }} <small class="fs-6 text-muted">₴</small></div>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-3 p-3">
+                            <i class="bi bi-wallet2 fs-4"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-
-        <!-- ГРАФІК 2: ДИНАМІКА -->
-        <div class="col-lg-6">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-header bg-white border-0 fw-bold">
-                    📈 Динаміка витрат (по місяцях)
-                </div>
+        <div class="col-md-4">
+            <div class="card kpi-card shadow-sm h-100">
                 <div class="card-body">
-                    <canvas id="trendChart" style="max-height: 300px;"></canvas>
-                    <div class="text-muted small mt-2 d-none text-center" data-empty-msg="trend">Немає даних за період</div>
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="kpi-label mb-2">У цьому місяці</div>
+                            <div class="kpi-value text-success">{{ spent_this_month|default:"0" }} <small class="fs-6 text-muted">₴</small></div>
+                        </div>
+                        <div class="bg-success bg-opacity-10 text-success rounded-3 p-3">
+                            <i class="bi bi-calendar-check fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card kpi-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="kpi-label mb-2">Швидкі дії</div>
+                            <div class="d-flex gap-2 mt-2">
+                                <a href="{% url 'financial_report' %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-pie-chart me-1"></i>Детальніше
+                                </a>
+                                <a href="{% url 'period_report' %}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-calendar-range me-1"></i>За період
+                                </a>
+                            </div>
+                        </div>
+                        <div class="bg-secondary bg-opacity-10 text-secondary rounded-3 p-3">
+                            <i class="bi bi-lightning fs-4"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ТАБЛИЦЯ KPI -->
-    <div class="card border-0 shadow-sm">
+    {# === CHARTS === #}
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card chart-card shadow-sm h-100">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-building me-2 text-warning"></i>Витрати по об'єктах
+                    </h5>
+                    <p class="text-muted small mb-0">Розподіл списань за складами</p>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="whChart"></canvas>
+                        <div class="empty-chart d-none" data-empty-msg="wh">
+                            <i class="bi bi-pie-chart"></i>
+                            <p class="mb-0">Немає даних про списання</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card chart-card shadow-sm h-100">
+                <div class="card-header bg-white border-0 py-3">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-graph-up me-2 text-info"></i>Динаміка витрат
+                    </h5>
+                    <p class="text-muted small mb-0">Тренд по місяцях</p>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                        <div class="empty-chart d-none" data-empty-msg="trend">
+                            <i class="bi bi-graph-up"></i>
+                            <p class="mb-0">Немає даних за період</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# === QUICK LINKS === #}
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0 py-3">
+            <h5 class="mb-0 fw-bold">
+                <i class="bi bi-collection me-2 text-secondary"></i>Інші звіти
+            </h5>
+        </div>
         <div class="card-body">
-            <div class="row text-center">
-                <div class="col-md-4 mb-3 mb-md-0 border-end">
-                    <small class="text-muted text-uppercase fw-bold">Всього витрачено</small>
-                    <div class="fs-2 fw-bold text-dark">{{ total_spent }} ₴</div>
+            <div class="row g-2">
+                <div class="col-6 col-md-3">
+                    <a href="{% url 'stock_balance_report' %}" class="btn btn-outline-primary w-100 py-3">
+                        <i class="bi bi-box-seam d-block fs-4 mb-1"></i>
+                        <span class="small">Залишки</span>
+                    </a>
                 </div>
-                <div class="col-md-4 mb-3 mb-md-0 border-end">
-                    <small class="text-muted text-uppercase fw-bold">У цьому місяці</small>
-                    <div class="fs-2 fw-bold text-success">{{ spent_this_month }} ₴</div>
+                <div class="col-6 col-md-3">
+                    <a href="{% url 'suppliers_rating' %}" class="btn btn-outline-success w-100 py-3">
+                        <i class="bi bi-people d-block fs-4 mb-1"></i>
+                        <span class="small">Постачальники</span>
+                    </a>
                 </div>
-                <div class="col-md-4">
-                    <button class="btn btn-outline-primary mt-2" onclick="window.print()">
-                        <i class="bi bi-printer me-2"></i> Друкувати звіт
-                    </button>
+                <div class="col-6 col-md-3">
+                    <a href="{% url 'writeoff_report' %}" class="btn btn-outline-danger w-100 py-3">
+                        <i class="bi bi-journal-x d-block fs-4 mb-1"></i>
+                        <span class="small">Списання</span>
+                    </a>
+                </div>
+                <div class="col-6 col-md-3">
+                    <a href="{% url 'procurement_journal' %}" class="btn btn-outline-warning w-100 py-3">
+                        <i class="bi bi-cart4 d-block fs-4 mb-1"></i>
+                        <span class="small">Закупівлі</span>
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- DATA FOR CHARTS -->
+{# === CHART DATA === #}
 {{ wh_labels|json_script:"wh-labels" }}
 {{ wh_data|json_script:"wh-data" }}
 {{ month_labels|json_script:"month-labels" }}
 {{ month_data|json_script:"month-data" }}
-
 {% endblock %}
 
 {% block extra_js %}
-<!-- Підключаємо локальний Chart.js (vendor) -->
 <script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
-
-<!-- Логіка графіків -->
 <script src="{% static 'warehouse/js/reports_charts.js' %}"></script>
-
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         if (window.ReportsCharts) {

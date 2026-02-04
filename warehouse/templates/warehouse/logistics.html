@@ -2,150 +2,246 @@
 
 {% block title %}Логістика - БудСклад{% endblock %}
 
+{% block extra_css %}
+<style>
+    .logistics-column {
+        min-height: 500px;
+    }
+    .logistics-card {
+        border: none;
+        border-radius: 12px;
+        transition: all 0.2s;
+    }
+    .logistics-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    }
+    .order-card {
+        border-radius: 10px;
+        border: 1px solid #e9ecef;
+        transition: all 0.15s;
+    }
+    .order-card:hover {
+        border-color: #adb5bd;
+        background-color: #fff;
+    }
+    .order-card.purchasing {
+        border-left: 4px solid #ffc107;
+    }
+    .order-card.transit {
+        border-left: 4px solid #0dcaf0;
+    }
+    .items-list {
+        font-size: 0.875rem;
+        border-left: 2px solid #dee2e6;
+        padding-left: 0.75rem;
+        margin: 0.5rem 0;
+    }
+    .route-badge {
+        font-size: 0.7rem;
+        padding: 0.25em 0.5em;
+    }
+    .vehicle-info {
+        background: linear-gradient(135deg, #e0f7fa 0%, #e1f5fe 100%);
+        border: 1px solid #b2ebf2;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    .empty-state {
+        padding: 3rem 1rem;
+        text-align: center;
+        color: #6c757d;
+    }
+    .empty-state i {
+        font-size: 3rem;
+        opacity: 0.3;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <h3 class="h4 mb-4">🚚 Логістичний монітор</h3>
+
+    {# === HEADER === #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h4 fw-bold text-dark mb-1">
+                <i class="bi bi-truck me-2 text-primary"></i>Логістичний монітор
+            </h1>
+            <p class="text-muted small mb-0">Відстеження закупівель та доставок в реальному часі</p>
+        </div>
+        <div class="d-flex gap-2">
+            <span class="badge bg-warning text-dark fs-6 d-flex align-items-center gap-1">
+                <i class="bi bi-cart"></i> {{ purchasing_orders.count }}
+            </span>
+            <span class="badge bg-info text-dark fs-6 d-flex align-items-center gap-1">
+                <i class="bi bi-truck"></i> {{ transit_orders.count }}
+            </span>
+        </div>
+    </div>
 
     <div class="row g-4">
-        
-        <!-- КОЛОНКА 1: У ЗАКУПІВЛІ (Purchasing) -->
-        <!-- Тут знаходяться заявки, які вже оплачені/замовлені, але ще не виїхали -->
-        <div class="col-md-6">
-            <div class="card h-100 border-0 shadow-sm bg-light">
-                <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center">
-                    <h5 class="fw-bold text-warning mb-0"><i class="bi bi-cart"></i> У закупівлі</h5>
-                    <span class="badge bg-warning text-dark rounded-pill">{{ purchasing_orders.count }}</span>
+
+        {# === COLUMN 1: PURCHASING === #}
+        <div class="col-lg-6">
+            <div class="card logistics-card shadow-sm logistics-column">
+                <div class="card-header bg-warning bg-opacity-10 border-0 py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="fw-bold text-dark mb-0">
+                            <i class="bi bi-cart-fill text-warning me-2"></i>У закупівлі
+                        </h5>
+                        <span class="badge bg-warning text-dark rounded-pill fs-6">{{ purchasing_orders.count }}</span>
+                    </div>
+                    <p class="text-muted small mb-0 mt-1">Замовлено, очікує відправки</p>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-3">
                     {% for order in purchasing_orders %}
-                    <div class="card mb-3 border-0 shadow-sm border-start border-4 border-warning">
-                        <div class="card-body p-3">
-                            <div class="d-flex justify-content-between">
-                                <h6 class="fw-bold mb-1">Заявка #{{ order.id }}</h6>
-                                <small class="text-muted">{{ order.created_at|date:"d.m" }}</small>
-                            </div>
-                            
-                            <!-- Список позицій (короткий) -->
-                            <div class="text-dark small mb-3 mt-2">
-                                <ul class="list-unstyled mb-1 ps-2 border-start border-2">
-                                    {% for item in order.items.all|slice:":3" %}
-                                        <li>{{ item.material.name }} <span class="fw-bold text-muted">— {{ item.quantity }} {{ item.material.unit }}</span></li>
-                                    {% empty %}
-                                        <li class="text-muted">Позиції не вказані</li>
-                                    {% endfor %}
-                                </ul>
-                                {% if order.items.count > 3 %}
-                                    <small class="text-muted ps-2">+ ще {{ order.items.count|add:"-3" }} поз.</small>
+                    <div class="order-card purchasing bg-white mb-3 p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <span class="fw-bold text-dark">Заявка #{{ order.id }}</span>
+                                {% if order.priority == 'high' %}
+                                    <span class="badge bg-danger ms-1"><i class="bi bi-fire"></i></span>
                                 {% endif %}
-                                <div class="mt-2 text-muted small">
-                                    ➔ {{ order.warehouse.name }}
+                            </div>
+                            <small class="text-muted">{{ order.created_at|date:"d.m.Y" }}</small>
+                        </div>
+
+                        <div class="items-list">
+                            {% for item in order.items.all|slice:":3" %}
+                                <div class="text-dark">
+                                    {{ item.material.name }}
+                                    <span class="text-muted">— {{ item.quantity }} {{ item.material.unit }}</span>
                                 </div>
-                            </div>
-                            
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div class="badge bg-white text-dark border text-truncate" style="max-width: 150px;">
-                                    <i class="bi bi-shop"></i> 
-                                    {% if order.selected_supplier %}
-                                        {{ order.selected_supplier.name }}
-                                    {% else %}
-                                        {{ order.supplier_info|default:"Постачальник не вказаний" }}
-                                    {% endif %}
-                                </div>
-                                
-                                <!-- КНОПКА ВІДПРАВКИ (З модалкою) -->
-                                <button type="button" class="btn btn-sm btn-primary fw-bold" 
-                                        data-bs-toggle="modal" 
-                                        data-bs-target="#shipModal" 
-                                        onclick="setShipOrder('{{ order.id }}', 'Заявка #{{ order.id }}')">
-                                    <i class="bi bi-truck"></i> Відправити
-                                </button>
-                            </div>
-                            
-                            <div class="mt-2 text-end">
-                                <small class="text-muted fst-italic">Очікує: {{ order.created_by.get_full_name|default:order.created_by.username }}</small>
-                            </div>
+                            {% empty %}
+                                <div class="text-muted fst-italic">Позиції не вказані</div>
+                            {% endfor %}
+                            {% if order.items.count > 3 %}
+                                <div class="text-primary small">+ ще {{ order.items.count|add:"-3" }} поз.</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2 mt-2 mb-3">
+                            <span class="badge bg-light text-dark border route-badge">
+                                <i class="bi bi-shop me-1"></i>
+                                {% if order.selected_supplier %}
+                                    {{ order.selected_supplier.name|truncatechars:20 }}
+                                {% else %}
+                                    {{ order.supplier_info|default:"Постачальник"|truncatechars:20 }}
+                                {% endif %}
+                            </span>
+                            <i class="bi bi-arrow-right text-muted small"></i>
+                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary route-badge">
+                                <i class="bi bi-geo-alt-fill me-1"></i>{{ order.warehouse.name|truncatechars:20 }}
+                            </span>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="bi bi-person me-1"></i>{{ order.created_by.get_full_name|default:order.created_by.username }}
+                            </small>
+                            <button type="button" class="btn btn-sm btn-primary fw-bold px-3"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#shipModal"
+                                    onclick="setShipOrder('{{ order.id }}', 'Заявка #{{ order.id }}')">
+                                <i class="bi bi-truck me-1"></i>Відправити
+                            </button>
                         </div>
                     </div>
                     {% empty %}
-                    <div class="text-center py-5 text-muted opacity-50">
-                        <i class="bi bi-cart-x fs-1"></i>
-                        <p class="small mt-2">Немає активних закупівель</p>
+                    <div class="empty-state">
+                        <i class="bi bi-cart-x d-block"></i>
+                        <p class="fw-bold mb-1">Немає активних закупівель</p>
+                        <small>Всі замовлення вже відправлені</small>
                     </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
 
-        <!-- КОЛОНКА 2: В ДОРОЗІ (In Transit) -->
-        <!-- Тут заявки, які вже їдуть на об'єкт -->
-        <div class="col-md-6">
-            <div class="card h-100 border-0 shadow-sm bg-light">
-                <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center">
-                    <h5 class="fw-bold text-info mb-0"><i class="bi bi-truck"></i> В дорозі</h5>
-                    <span class="badge bg-info text-dark rounded-pill">{{ transit_orders.count }}</span>
+        {# === COLUMN 2: IN TRANSIT === #}
+        <div class="col-lg-6">
+            <div class="card logistics-card shadow-sm logistics-column">
+                <div class="card-header bg-info bg-opacity-10 border-0 py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="fw-bold text-dark mb-0">
+                            <i class="bi bi-truck text-info me-2"></i>В дорозі
+                        </h5>
+                        <span class="badge bg-info text-dark rounded-pill fs-6">{{ transit_orders.count }}</span>
+                    </div>
+                    <p class="text-muted small mb-0 mt-1">Вантаж їде на об'єкт</p>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-3">
                     {% for order in transit_orders %}
-                    <div class="card mb-3 border-start border-4 border-info shadow-sm">
-                        <div class="card-body p-3">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="fw-bold mb-1">Заявка #{{ order.id }}</h6>
-                                    <!-- Список позицій -->
-                                    <div class="small mt-1">
-                                        {% for item in order.items.all|slice:":3" %}
-                                            <div class="text-truncate" style="max-width: 200px;">
-                                                • {{ item.material.name }} <b>({{ item.quantity }} {{ item.material.unit }})</b>
-                                            </div>
-                                        {% endfor %}
-                                        {% if order.items.count > 3 %}
-                                            <div class="text-muted small">+ ще {{ order.items.count|add:"-3" }}</div>
-                                        {% endif %}
-                                    </div>
+                    <div class="order-card transit bg-white mb-3 p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <span class="fw-bold text-dark">Заявка #{{ order.id }}</span>
+                                {% if order.priority == 'high' %}
+                                    <span class="badge bg-danger ms-1"><i class="bi bi-fire"></i></span>
+                                {% endif %}
+                            </div>
+                            <a href="{% url 'print_order_pdf' order.id %}" target="_blank"
+                               class="btn btn-sm btn-outline-secondary" title="Друк ТТН">
+                                <i class="bi bi-file-earmark-text me-1"></i>ТТН
+                            </a>
+                        </div>
+
+                        <div class="items-list">
+                            {% for item in order.items.all|slice:":3" %}
+                                <div class="text-dark">
+                                    {{ item.material.name }}
+                                    <span class="fw-bold">({{ item.quantity }} {{ item.material.unit }})</span>
                                 </div>
-                                <!-- Кнопка друку ТТН -->
-                                <a href="{% url 'print_order_pdf' order.id %}" target="_blank" class="btn btn-sm btn-outline-secondary" title="ТТН / Накладна">
-                                    <i class="bi bi-file-earmark-text"></i> ТТН
-                                </a>
-                            </div>
-                            
-                            <!-- Інфо про машину -->
-                            {% if order.vehicle_number or order.driver_name %}
-                            <div class="mt-2 mb-2 p-2 bg-info bg-opacity-10 rounded border border-info border-opacity-25 small">
-                                <i class="bi bi-truck-front-fill me-2"></i> 
-                                <b>{{ order.vehicle_number }}</b> 
-                                <span class="text-muted">({{ order.driver_name }})</span>
-                            </div>
+                            {% endfor %}
+                            {% if order.items.count > 3 %}
+                                <div class="text-primary small">+ ще {{ order.items.count|add:"-3" }} поз.</div>
                             {% endif %}
-                            
-                            <div class="d-flex align-items-center mt-3 small text-muted bg-light p-2 rounded">
-                                <div class="me-2 text-truncate" style="max-width: 45%;">
-                                    {% if order.source_warehouse %}
-                                        <i class="bi bi-building"></i> {{ order.source_warehouse.name }}
-                                    {% else %}
-                                        <i class="bi bi-shop"></i> 
-                                        {% if order.selected_supplier %}
-                                            {{ order.selected_supplier.name }}
-                                        {% else %}
-                                            {{ order.supplier_info|default:"Постачальник..." }}
-                                        {% endif %}
-                                    {% endif %}
-                                </div>
-                                <i class="bi bi-arrow-right mx-2 text-primary"></i>
-                                <div class="fw-bold text-dark text-truncate" style="max-width: 45%;">
-                                    <i class="bi bi-geo-alt-fill"></i> {{ order.warehouse.name }}
-                                </div>
+                        </div>
+
+                        {% if order.vehicle_number or order.driver_name %}
+                        <div class="vehicle-info mt-2 mb-2">
+                            <i class="bi bi-truck-front-fill text-info me-2"></i>
+                            <strong>{{ order.vehicle_number|default:"—" }}</strong>
+                            {% if order.driver_name %}
+                                <span class="text-muted ms-2">({{ order.driver_name }})</span>
+                            {% endif %}
+                            {% if order.driver_phone %}
+                                <a href="tel:{{ order.driver_phone }}" class="ms-2 text-decoration-none">
+                                    <i class="bi bi-telephone"></i>
+                                </a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex align-items-center gap-2 mt-2 mb-2 p-2 bg-light rounded">
+                            <div class="text-muted small text-truncate" style="max-width: 40%;">
+                                {% if order.source_warehouse %}
+                                    <i class="bi bi-building me-1"></i>{{ order.source_warehouse.name }}
+                                {% else %}
+                                    <i class="bi bi-shop me-1"></i>
+                                    {% if order.selected_supplier %}{{ order.selected_supplier.name }}{% else %}Постачальник{% endif %}
+                                {% endif %}
                             </div>
-                            
-                            <div class="mt-2 text-end">
-                                <small class="text-muted fst-italic">Очікує: {{ order.created_by.get_full_name|default:order.created_by.username }}</small>
+                            <i class="bi bi-arrow-right text-primary"></i>
+                            <div class="fw-bold text-dark text-truncate" style="max-width: 40%;">
+                                <i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ order.warehouse.name }}
                             </div>
+                        </div>
+
+                        <div class="text-end">
+                            <small class="text-muted">
+                                Очікує: <span class="fw-bold">{{ order.created_by.get_full_name|default:order.created_by.username }}</span>
+                            </small>
                         </div>
                     </div>
                     {% empty %}
-                    <div class="text-center py-5 text-muted opacity-50">
-                        <i class="bi bi-truck fs-1"></i>
-                        <p class="small mt-2">Всі машини приїхали</p>
+                    <div class="empty-state">
+                        <i class="bi bi-truck d-block"></i>
+                        <p class="fw-bold mb-1">Всі машини приїхали</p>
+                        <small>Немає вантажів у дорозі</small>
                     </div>
                     {% endfor %}
                 </div>
@@ -155,43 +251,52 @@
     </div>
 </div>
 
-<!-- МОДАЛЬНЕ ВІКНО ВІДПРАВКИ -->
+{# === SHIP MODAL === #}
 <div class="modal fade" id="shipModal" tabindex="-1">
-    <div class="modal-dialog">
-        <form method="post" enctype="multipart/form-data" id="shipForm" class="modal-content">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" enctype="multipart/form-data" id="shipForm" class="modal-content border-0 shadow-lg">
             {% csrf_token %}
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">🚛 Відправка вантажу</h5>
+            <div class="modal-header bg-primary text-white border-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-truck me-2"></i>Відправка вантажу
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <p class="text-muted">Ви відправляєте: <b id="shipOrderName" class="text-dark">...</b></p>
-                
-                <h6 class="fw-bold mb-3 text-primary">Дані логістики (Необов'язково)</h6>
+            <div class="modal-body p-4">
+                <p class="text-muted mb-4">
+                    Відправляємо: <strong class="text-dark" id="shipOrderName">...</strong>
+                </p>
+
+                <h6 class="fw-bold text-primary mb-3">
+                    <i class="bi bi-info-circle me-1"></i>Дані логістики
+                </h6>
+
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Водій (ПІБ)</label>
-                    <input type="text" name="driver_name" class="form-control" placeholder="Напр: Іванов Іван">
+                    <input type="text" name="driver_name" class="form-control" placeholder="Іванов Іван Іванович">
                 </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label class="form-label small fw-bold">Телефон</label>
-                        <input type="text" name="driver_phone" class="form-control" placeholder="050...">
+
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small fw-bold">Телефон водія</label>
+                        <input type="tel" name="driver_phone" class="form-control" placeholder="+380501234567">
                     </div>
-                    <div class="col-6 mb-3">
+                    <div class="col-6">
                         <label class="form-label small fw-bold">Номер авто</label>
                         <input type="text" name="vehicle_number" class="form-control" placeholder="АА 1234 ВВ">
                     </div>
                 </div>
+
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Фото ТТН / Накладної</label>
-                    <input type="file" name="shipping_doc" class="form-control">
-                    <div class="form-text">Скан накладної, який побачить прораб при прийомі.</div>
+                    <input type="file" name="shipping_doc" class="form-control" accept="image/*,.pdf">
+                    <div class="form-text">Скан документа, який побачить прораб при прийомі</div>
                 </div>
             </div>
-            <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Скасувати</button>
+            <div class="modal-footer bg-light border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Скасувати</button>
                 <button type="submit" class="btn btn-primary fw-bold px-4">
-                    <i class="bi bi-send-check me-2"></i> Підтвердити відправку
+                    <i class="bi bi-send-check me-2"></i>Підтвердити відправку
                 </button>
             </div>
         </form>
@@ -200,7 +305,6 @@
 
 <script>
     function setShipOrder(id, name) {
-        // Формуємо правильний URL для POST запиту. У urls.py: path('order/<int:pk>/mark_shipped/', ...)
         document.getElementById('shipForm').action = "/order/" + id + "/mark_shipped/";
         document.getElementById('shipOrderName').innerText = name;
     }

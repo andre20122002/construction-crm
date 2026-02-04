@@ -2,101 +2,236 @@
 
 {% block title %}Журнал заявок - БудСклад{% endblock %}
 
+{% block extra_css %}
+<style>
+    .filter-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
+        border: 1px solid #e9ecef;
+    }
+    .table-container {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .table-sticky thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #f8f9fa;
+    }
+    .order-row {
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .order-row:hover {
+        background-color: #e8f4ff !important;
+    }
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 0.35em 0.75em;
+        font-weight: 600;
+    }
+    .route-badge {
+        font-size: 0.7rem;
+        padding: 0.25em 0.5em;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    
+
+    {# === HEADER === #}
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="h4 fw-bold"><i class="bi bi-clock-history me-2"></i> Історія заявок</h3>
-        {% if not user.is_staff %}
+        <div>
+            <h1 class="h4 fw-bold text-dark mb-1">
+                <i class="bi bi-clipboard-data me-2 text-primary"></i>Журнал заявок
+            </h1>
+            <p class="text-muted small mb-0">Історія всіх заявок на закупівлю та переміщення</p>
+        </div>
         <a href="{% url 'create_order' %}" class="btn btn-primary shadow-sm">
-            <i class="bi bi-plus-lg"></i> <span class="d-none d-md-inline">Створити</span>
+            <i class="bi bi-plus-lg me-1"></i>
+            <span class="d-none d-sm-inline">Нова заявка</span>
         </a>
-        {% endif %}
     </div>
 
-    <!-- Фільтри -->
-    <div class="card shadow-sm mb-4 border-0 bg-light">
+    {# === FILTERS === #}
+    <div class="card shadow-sm mb-4 border-0 filter-card">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end">
                 <div class="col-6 col-md-3">
-                    <label class="small fw-bold text-muted">Статус</label>
+                    <label class="form-label small fw-bold text-muted mb-1">Статус</label>
                     <select name="status" class="form-select form-select-sm">
                         <option value="">Всі статуси</option>
                         <option value="new" {% if f_status == 'new' %}selected{% endif %}>⏳ На погодженні</option>
+                        <option value="approved" {% if f_status == 'approved' %}selected{% endif %}>✓ Погоджено</option>
                         <option value="purchasing" {% if f_status == 'purchasing' %}selected{% endif %}>💸 У закупівлі</option>
                         <option value="in_transit" {% if f_status == 'in_transit' %}selected{% endif %}>🚚 В дорозі</option>
                         <option value="completed" {% if f_status == 'completed' %}selected{% endif %}>✅ Виконано</option>
+                        <option value="rejected" {% if f_status == 'rejected' %}selected{% endif %}>❌ Відхилено</option>
                     </select>
                 </div>
-                <div class="col-6 col-md-3">
-                    <label class="small fw-bold text-muted">З дати</label>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small fw-bold text-muted mb-1">З дати</label>
                     <input type="date" name="date_from" class="form-control form-control-sm" value="{{ f_date_from|default:'' }}">
                 </div>
-                <div class="col-md-3 d-flex gap-2">
-                    <button type="submit" class="btn btn-dark btn-sm flex-grow-1"><i class="bi bi-funnel"></i></button>
-                    <button type="submit" name="export" value="excel" class="btn btn-success btn-sm flex-grow-1"><i class="bi bi-file-earmark-excel"></i> Excel</button>
-                    <a href="{% url 'order_list' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg"></i></a>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small fw-bold text-muted mb-1">По дату</label>
+                    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ f_date_to|default:'' }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="btn-group w-100">
+                        <button type="submit" class="btn btn-dark btn-sm">
+                            <i class="bi bi-funnel-fill me-1"></i>Фільтрувати
+                        </button>
+                        <button type="submit" name="export" value="excel" class="btn btn-success btn-sm" title="Експорт в Excel">
+                            <i class="bi bi-file-earmark-excel"></i>
+                        </button>
+                        <a href="{% url 'order_list' %}" class="btn btn-outline-secondary btn-sm" title="Скинути">
+                            <i class="bi bi-x-lg"></i>
+                        </a>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0">
+    {# === TABLE === #}
+    <div class="card shadow-sm border-0 table-container">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="bg-light">
-                    <tr>
-                        <th class="ps-3">ID / Дата</th>
-                        <th>Маршрут</th>
-                        <th>Склад заявки</th>
-                        <th>Кількість поз.</th>
-                        <th>Статус</th>
-                        <th class="text-end pe-3">Дії</th>
+            <table class="table table-hover align-middle mb-0 table-sticky">
+                <thead>
+                    <tr class="text-muted small text-uppercase">
+                        <th class="ps-3 fw-semibold" style="width: 100px;">ID / Дата</th>
+                        <th class="fw-semibold">Тип</th>
+                        <th class="fw-semibold">Об'єкт / Товари</th>
+                        <th class="text-center fw-semibold" style="width: 80px;">Позицій</th>
+                        <th class="fw-semibold" style="width: 120px;">Статус</th>
+                        <th class="text-end pe-3 fw-semibold" style="width: 80px;">Дії</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for order in orders %}
-                    <tr style="cursor: pointer;" onclick="location.href='{% if user.is_staff %}{% url 'manager_order_detail' order.id %}{% else %}{% url 'foreman_order_detail' order.id %}{% endif %}'">
+                    <tr class="order-row" onclick="location.href='{% if user.is_staff %}{% url 'manager_order_detail' order.id %}{% else %}{% url 'foreman_order_detail' order.id %}{% endif %}'">
                         <td class="ps-3">
-                            <span class="text-muted fw-bold">#{{ order.id }}</span><br>
-                            <small class="text-muted">{{ order.created_at|date:"d.m H:i" }}</small>
+                            <span class="fw-bold text-dark">#{{ order.id }}</span>
+                            <br>
+                            <small class="text-muted">{{ order.created_at|date:"d.m.Y" }}</small>
                         </td>
                         <td>
                             {% if order.source_warehouse %}
-                                <span class="badge bg-info text-dark mb-1">🚚 Переміщення</span>
-                                <div class="small text-muted">{{ order.source_warehouse.name }} → {{ order.warehouse.name }}</div>
+                                <span class="badge bg-info text-dark route-badge">
+                                    <i class="bi bi-arrow-left-right me-1"></i>Переміщення
+                                </span>
+                                <div class="small text-muted mt-1">
+                                    {{ order.source_warehouse.name }} → {{ order.warehouse.name }}
+                                </div>
                             {% else %}
-                                <span class="badge bg-success mb-1">🛒 Закупівля</span>
-                                <div class="small text-muted">{{ order.warehouse.name }}</div>
+                                <span class="badge bg-success route-badge">
+                                    <i class="bi bi-cart me-1"></i>Закупівля
+                                </span>
+                                <div class="small text-muted mt-1">{{ order.warehouse.name }}</div>
                             {% endif %}
                         </td>
                         <td>
-                            <!-- Список товарів -->
-                            {% for item in order.items.all|slice:":3" %}
-                                <div class="small fw-bold">{{ item.material.name }}</div>
+                            {% for item in order.items.all|slice:":2" %}
+                                <div class="small {% if forloop.first %}fw-bold text-dark{% else %}text-muted{% endif %}">
+                                    {{ item.material.name|truncatechars:40 }}
+                                </div>
                             {% endfor %}
-                            {% if order.items.count > 3 %}
-                                <small class="text-muted">+ ще {{ order.items.count|add:"-3" }}...</small>
+                            {% if order.items.count > 2 %}
+                                <small class="text-primary">+ ще {{ order.items.count|add:"-2" }} позицій...</small>
                             {% endif %}
                         </td>
-                        <td class="fw-bold text-center">
-                            {{ order.items.count }}
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border fw-bold">{{ order.items.count }}</span>
                         </td>
                         <td>
-                            <span class="badge bg-secondary">{{ order.get_status_display }}</span>
+                            {% if order.status == 'new' %}
+                                <span class="badge bg-primary status-badge">На погодженні</span>
+                            {% elif order.status == 'approved' %}
+                                <span class="badge bg-success status-badge">Погоджено</span>
+                            {% elif order.status == 'purchasing' %}
+                                <span class="badge bg-warning text-dark status-badge">Закупівля</span>
+                            {% elif order.status == 'in_transit' %}
+                                <span class="badge bg-info text-dark status-badge">В дорозі</span>
+                            {% elif order.status == 'completed' %}
+                                <span class="badge bg-secondary status-badge">Виконано</span>
+                            {% elif order.status == 'rejected' %}
+                                <span class="badge bg-danger status-badge">Відхилено</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark border status-badge">{{ order.get_status_display }}</span>
+                            {% endif %}
+                            {% if order.priority == 'high' %}
+                                <span class="badge bg-danger status-badge ms-1" title="Терміново">
+                                    <i class="bi bi-fire"></i>
+                                </span>
+                            {% endif %}
                         </td>
                         <td class="text-end pe-3" onclick="event.stopPropagation();">
-                            <a href="{% url 'print_order_pdf' order.id %}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                <i class="bi bi-printer"></i>
-                            </a>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{% if user.is_staff %}{% url 'manager_order_detail' order.id %}{% else %}{% url 'foreman_order_detail' order.id %}{% endif %}"
+                                   class="btn btn-light border" title="Переглянути">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{% url 'print_order_pdf' order.id %}" target="_blank"
+                                   class="btn btn-light border" title="Друк">
+                                    <i class="bi bi-printer"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="6" class="text-center py-5 text-muted">Записів не знайдено.</td></tr>
+                    <tr>
+                        <td colspan="6" class="text-center py-5">
+                            <div class="text-muted">
+                                <i class="bi bi-inbox fs-1 d-block mb-3 opacity-50"></i>
+                                <p class="mb-2 fw-bold">Заявок не знайдено</p>
+                                <p class="small mb-3">Спробуйте змінити фільтри або створіть нову заявку</p>
+                                <a href="{% url 'create_order' %}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-plus-lg me-1"></i>Створити заявку
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        {# === PAGINATION === #}
+        {% if orders.has_other_pages %}
+        <div class="card-footer bg-white border-top py-3">
+            <nav aria-label="Pagination">
+                <ul class="pagination pagination-sm justify-content-center mb-0">
+                    {% if orders.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ orders.previous_page_number }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+
+                    {% for i in orders.paginator.page_range %}
+                        {% if orders.number == i %}
+                            <li class="page-item active"><span class="page-link">{{ i }}</span></li>
+                        {% elif i > orders.number|add:'-3' and i < orders.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ i }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}">{{ i }}</a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if orders.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ orders.next_page_number }}{% if f_status %}&status={{ f_status }}{% endif %}{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

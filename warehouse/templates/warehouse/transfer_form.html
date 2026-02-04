@@ -5,86 +5,208 @@
 
 {% block extra_css %}
 <style>
-    /* Стилі */
+    .transfer-card {
+        border-radius: 16px;
+        overflow: hidden;
+    }
+    .transfer-header {
+        background: linear-gradient(135deg, #0dcaf0 0%, #0aa2c0 100%);
+        color: white;
+        padding: 1.5rem;
+    }
+    .transfer-visual {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e9ecef;
+    }
+    .transfer-point {
+        text-align: center;
+        flex: 1;
+        max-width: 200px;
+    }
+    .transfer-point .icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 0.5rem;
+        font-size: 1.25rem;
+    }
+    .transfer-point.source .icon {
+        background: #fff3cd;
+        color: #856404;
+    }
+    .transfer-point.target .icon {
+        background: #d1e7dd;
+        color: #0f5132;
+    }
+    .transfer-arrow {
+        font-size: 1.5rem;
+        color: #6c757d;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 0.4; transform: translateX(0); }
+        50% { opacity: 1; transform: translateX(5px); }
+    }
+    .section-title {
+        font-size: 0.875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #0dcaf0;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .section-title::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #e9ecef;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-5 mb-5" style="max-width: 650px;">
-    <div class="card shadow border-info">
-        <div class="card-header bg-info text-white">
-            <h3 class="mb-0 fw-bold"><i class="bi bi-arrow-left-right me-2"></i> Переміщення матеріалів</h3>
+<div class="container mt-4 mb-5" style="max-width: 700px;">
+
+    {# === BREADCRUMB === #}
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb small">
+            <li class="breadcrumb-item"><a href="{% url 'transfer_journal' %}" class="text-decoration-none">Журнал переміщень</a></li>
+            <li class="breadcrumb-item active">Нове переміщення</li>
+        </ol>
+    </nav>
+
+    <div class="card shadow-lg border-0 transfer-card">
+
+        {# === HEADER === #}
+        <div class="transfer-header">
+            <div class="d-flex align-items-center gap-3">
+                <div class="bg-white bg-opacity-25 rounded-3 p-2">
+                    <i class="bi bi-arrow-left-right fs-4"></i>
+                </div>
+                <div>
+                    <h1 class="h4 fw-bold mb-0">Переміщення матеріалів</h1>
+                    <p class="small mb-0 opacity-75">Передача матеріалів між складами/об'єктами</p>
+                </div>
+            </div>
         </div>
+
+        {# === VISUAL DIRECTION === #}
+        <div class="transfer-visual" id="transferVisual">
+            <div class="transfer-point source">
+                <div class="icon"><i class="bi bi-box-arrow-right"></i></div>
+                <div class="small text-muted">Звідки</div>
+                <div class="fw-bold text-dark" id="sourceLabel">Оберіть склад</div>
+            </div>
+            <div class="transfer-arrow">
+                <i class="bi bi-arrow-right"></i>
+            </div>
+            <div class="transfer-point target">
+                <div class="icon"><i class="bi bi-box-arrow-in-down"></i></div>
+                <div class="small text-muted">Куди</div>
+                <div class="fw-bold text-dark" id="targetLabel">Оберіть склад</div>
+            </div>
+        </div>
+
         <div class="card-body p-4">
-            
+
             {% if form.errors %}
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i> Перевірте правильність заповнення форми.
+            <div class="alert alert-danger d-flex align-items-center">
+                <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+                <div>
+                    <strong>Помилка!</strong> Перевірте правильність заповнення форми.
                     {{ form.errors }}
                 </div>
+            </div>
             {% endif %}
 
-            <!-- 
-                data-stock-validate: активує автоматичну перевірку залишків (stock_ajax.js)
-                data-warehouse-select: вказуємо ID поля складу-джерела (source_warehouse), 
-                                       оскільки саме з нього списується товар.
-                data-hint-target: куди виводити інформацію про залишок
-            -->
-            <form method="post" 
-                  data-stock-validate 
-                  data-warehouse-select="#id_source_warehouse" 
-                  data-hint-target="#stock-hint">
+            <form method="post"
+                  data-stock-validate
+                  data-warehouse-select="#id_source_warehouse"
+                  data-hint-target="#stock-hint"
+                  id="transferForm">
                 {% csrf_token %}
-                
-                <h5 class="text-info mb-3">1. Логістика</h5>
-                
+
+                {# === SECTION 1: LOGISTICS === #}
+                <div class="section-title">
+                    <i class="bi bi-geo-alt"></i> Маршрут
+                </div>
+
                 <div class="row g-3 mb-4">
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-muted">Звідки (Джерело)</label>
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-box-arrow-right text-warning me-1"></i>Звідки (Джерело)
+                        </label>
                         {{ form.source_warehouse }}
+                        <div class="form-text">Склад, з якого списується матеріал</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-muted">Куди (Призначення)</label>
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-box-arrow-in-down text-success me-1"></i>Куди (Призначення)
+                        </label>
                         {{ form.target_warehouse }}
+                        <div class="form-text">Склад, на який зараховується матеріал</div>
                     </div>
                 </div>
 
-                <h5 class="text-info mb-3">2. Матеріал та Кількість</h5>
-                
+                {# === SECTION 2: MATERIAL === #}
+                <div class="section-title">
+                    <i class="bi bi-box-seam"></i> Матеріал
+                </div>
+
                 <div class="mb-3">
-                    <label class="form-label fw-bold small text-muted">Матеріал</label>
+                    <label class="form-label fw-bold">Оберіть матеріал</label>
                     {{ form.material }}
                 </div>
 
-                <div class="row g-3 mb-4 align-items-end">
+                <div class="row g-3 mb-4">
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-muted">Кількість</label>
+                        <label class="form-label fw-bold">Кількість</label>
                         {{ form.quantity }}
                     </div>
-                    <div class="col-md-6">
-                        <!-- Підказка залишку (заповнюється через stock_ajax.js) -->
-                        <div id="stock-hint" class="form-text text-muted w-100 ps-2" style="display: none;"></div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div id="stock-hint" class="alert alert-light border mb-0 w-100 py-2" style="display: none;">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <span class="stock-text"></span>
+                        </div>
                     </div>
                 </div>
 
-                <h5 class="text-info mb-3">3. Деталі</h5>
-                
-                <div class="mb-3">
-                    <label class="form-label fw-bold small text-muted">Дата операції</label>
-                    <input type="date" name="date" class="form-control" value="{% now 'Y-m-d' %}">
+                {# === SECTION 3: DETAILS === #}
+                <div class="section-title">
+                    <i class="bi bi-card-text"></i> Деталі
                 </div>
 
-                <div class="mb-4">
-                    <label class="form-label fw-bold small text-muted">Коментар</label>
-                    {{ form.description }}
-                    <div class="form-text">Вкажіть причину переміщення або номер накладної.</div>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Дата операції</label>
+                        <input type="date" name="date" class="form-control" value="{% now 'Y-m-d' %}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Коментар</label>
+                        {{ form.description }}
+                        <div class="form-text">Причина переміщення або номер накладної</div>
+                    </div>
                 </div>
 
-                <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-info text-white fw-bold btn-lg shadow-sm">
-                        <i class="bi bi-check-circle-fill me-2"></i> Підтвердити переміщення
+                {# === SUBMIT === #}
+                <div class="d-grid gap-2 pt-3 border-top">
+                    <button type="submit" class="btn btn-info btn-lg text-white fw-bold shadow-sm">
+                        <i class="bi bi-check-circle-fill me-2"></i>Підтвердити переміщення
                     </button>
-                    <a href="{% url 'transfer_journal' %}" class="btn btn-light text-muted">Скасувати</a>
+                    <a href="{% url 'transfer_journal' %}" class="btn btn-light text-muted">
+                        <i class="bi bi-x-lg me-1"></i>Скасувати
+                    </a>
                 </div>
 
             </form>
@@ -94,6 +216,28 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Підключаємо універсальний скрипт перевірки залишків -->
 <script src="{% static 'warehouse/js/stock_ajax.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sourceSelect = document.getElementById('id_source_warehouse');
+    const targetSelect = document.getElementById('id_target_warehouse');
+    const sourceLabel = document.getElementById('sourceLabel');
+    const targetLabel = document.getElementById('targetLabel');
+
+    function updateLabels() {
+        if (sourceSelect && sourceLabel) {
+            const sourceText = sourceSelect.options[sourceSelect.selectedIndex]?.text;
+            sourceLabel.textContent = sourceText && sourceText !== '---------' ? sourceText : 'Оберіть склад';
+        }
+        if (targetSelect && targetLabel) {
+            const targetText = targetSelect.options[targetSelect.selectedIndex]?.text;
+            targetLabel.textContent = targetText && targetText !== '---------' ? targetText : 'Оберіть склад';
+        }
+    }
+
+    if (sourceSelect) sourceSelect.addEventListener('change', updateLabels);
+    if (targetSelect) targetSelect.addEventListener('change', updateLabels);
+    updateLabels();
+});
+</script>
 {% endblock %}
