@@ -206,6 +206,31 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 LOGIN_URL = '/accounts/login/'
 
 
+# --- EMAIL CONFIGURATION ---
+
+# Email backend: 'console' для dev, 'smtp' для production
+if DJANGO_ENV == 'production':
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+    EMAIL_USE_TLS = parse_bool(os.getenv('EMAIL_USE_TLS', 'True'), True)
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@budsklad.com')
+else:
+    # В dev режимі листи виводяться в консоль
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = 'noreply@localhost'
+
+# Адміністратори для сповіщень про 500 помилки
+ADMINS = [
+    (name.strip(), email.strip())
+    for admin in parse_csv(os.getenv('DJANGO_ADMINS', ''))
+    if ':' in admin
+    for name, email in [admin.split(':', 1)]
+]
+
+
 # --- SECURITY HARDENING (PROD SPECIFIC) ---
 
 if DJANGO_ENV == 'production':
