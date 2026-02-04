@@ -67,9 +67,16 @@ else:
 
 # --- ALLOWED HOSTS ---
 ALLOWED_HOSTS = parse_csv(os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost'))
-# Якщо на проді не задані хости - це помилка конфігурації
-if DJANGO_ENV == 'production' and not ALLOWED_HOSTS and not IS_CHECK_OR_TEST:
-     raise ValueError("DJANGO_ALLOWED_HOSTS required in production!")
+
+# Фільтруємо wildcard '*' у production (небезпечно!)
+if DJANGO_ENV == 'production':
+    ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h != '*']
+    if not ALLOWED_HOSTS and not IS_CHECK_OR_TEST:
+        raise ValueError("DJANGO_ALLOWED_HOSTS required in production (wildcard '*' not allowed)!")
+
+# --- CSRF TRUSTED ORIGINS ---
+# Для роботи за проксі (Nginx, Ngrok, etc.)
+CSRF_TRUSTED_ORIGINS = parse_csv(os.getenv('CSRF_TRUSTED_ORIGINS', 'http://127.0.0.1,http://localhost'))
 
 
 # --- APP CONFIGURATION ---
@@ -123,17 +130,21 @@ WSGI_APPLICATION = 'construction_crm.wsgi.application'
 
 # --- DATABASE ---
 
-# Підключення PostgreSQL
+# Підключення PostgreSQL (credentials з .env)
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'warehouse_db',
-        'USER': 'postgres', # Зазвичай 'postgres' за замовчуванням, змініть якщо у вас інший юзер
-        'PASSWORD': 'Traktor@1',
-        'HOST': 'localhost', # Або IP вашого сервера БД
-        'PORT': '5432',
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
+        'NAME': os.getenv('DB_NAME', 'warehouse_db'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
+
+# Перевірка наявності пароля БД у production
+if DJANGO_ENV == 'production' and not DATABASES['default']['PASSWORD']:
+    raise ValueError("DB_PASSWORD is required in production!")
 
 
 # --- PASSWORD VALIDATION ---
@@ -212,3 +223,76 @@ if DJANGO_ENV == 'production':
     SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', 31536000))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+
+# --- LOGGING ---
+
+LOG_LEVEL = os.getenv('DJANGO_LOG_LEVEL', 'INFO' if DJANGO_ENV == 'production' else 'DEBUG')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {module}: {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'maxBytes': 10 * 1024 * 1024,  # 10 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'] if DJANGO_ENV == 'production' else ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['file', 'mail_admins'] if DJANGO_ENV == 'production' else ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'warehouse': {
+            'handlers': ['console', 'file'] if DJANGO_ENV == 'production' else ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+    },
+}
+
+# Створюємо директорію для логів, якщо не існує
+if DJANGO_ENV == 'production':
+    (BASE_DIR / 'logs').mkdir(exist_ok=True)
