@@ -294,5 +294,4 @@ LOGGING = {
 }
 
 # Створюємо директорію для логів, якщо не існує
-if DJANGO_ENV == 'production':
-    (BASE_DIR / 'logs').mkdir(exist_ok=True)
+(BASE_DIR / 'logs').mkdir(exist_ok=True)
