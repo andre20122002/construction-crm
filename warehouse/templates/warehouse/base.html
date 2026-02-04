@@ -117,8 +117,8 @@
                 
                 {% if user.is_staff %}
                     <!-- === МЕНЮ МЕНЕДЖЕРА === -->
-                    
-                    <div class="sidebar-heading">Операційні (Менеджер)</div>
+
+                    <div class="sidebar-heading">Заявки</div>
                     <li class="nav-item">
                         <a href="{% url 'manager_dashboard' %}" class="nav-link {% if route_name == 'manager_dashboard' %}active{% endif %}">
                             <i class="bi bi-grid-1x2"></i> Робочий стіл
@@ -126,7 +126,7 @@
                     </li>
                     <li class="nav-item">
                         <a href="{% url 'create_order' %}" class="nav-link {% if route_name == 'create_order' %}active{% endif %}">
-                             <i class="bi bi-plus-circle"></i> Створити заявку
+                            <i class="bi bi-plus-circle"></i> Нова заявка
                         </a>
                     </li>
                     <li class="nav-item">
@@ -140,12 +140,29 @@
                         </a>
                     </li>
 
-                     <div class="sidebar-heading">Довідники</div>
+                    <div class="sidebar-heading">Склад</div>
                     <li class="nav-item">
                         <a href="{% url 'material_list' %}" class="nav-link {% if route_name == 'material_list' %}active{% endif %}">
                             <i class="bi bi-boxes"></i> Матеріали
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a href="{% url 'stock_balance_report' %}" class="nav-link {% if route_name == 'stock_balance_report' %}active{% endif %}">
+                            <i class="bi bi-box-seam"></i> Залишки
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'transfer_journal' %}" class="nav-link {% if route_name == 'transfer_journal' %}active{% endif %}">
+                            <i class="bi bi-arrow-left-right"></i> Переміщення
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'writeoff_report' %}" class="nav-link {% if route_name == 'writeoff_report' %}active{% endif %}">
+                            <i class="bi bi-journal-minus"></i> Списання
+                        </a>
+                    </li>
+
+                    <div class="sidebar-heading">Довідники</div>
                     <li class="nav-item">
                         <a href="{% url 'suppliers_rating' %}" class="nav-link {% if route_name == 'suppliers_rating' %}active{% endif %}">
                             <i class="bi bi-people"></i> Постачальники
@@ -153,40 +170,87 @@
                     </li>
                     <li class="nav-item">
                         <a href="{% url 'warehouse_detail' 1 %}" class="nav-link {% if route_name == 'warehouse_detail' %}active{% endif %}">
-                            <i class="bi bi-building"></i> Головний склад
+                            <i class="bi bi-building"></i> Об'єкти
                         </a>
                     </li>
 
-                    <div class="sidebar-heading">Звіти та Аналітика</div>
+                    <div class="sidebar-heading">Фінанси</div>
+                    <li class="nav-item">
+                        <a href="{% url 'financial_report' %}" class="nav-link {% if route_name == 'financial_report' %}active{% endif %}">
+                            <i class="bi bi-cash-coin"></i> Фінансовий звіт
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'procurement_journal' %}" class="nav-link {% if route_name == 'procurement_journal' %}active{% endif %}">
+                            <i class="bi bi-cart4"></i> Журнал закупівель
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'planning_report' %}" class="nav-link {% if route_name == 'planning_report' %}active{% endif %}">
+                            <i class="bi bi-calendar-check"></i> План закупівель
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'period_report' %}" class="nav-link {% if route_name == 'period_report' %}active{% endif %}">
+                            <i class="bi bi-calendar-range"></i> Оборотна відомість
+                        </a>
+                    </li>
+
+                    <div class="sidebar-heading">Аналітика</div>
                     <li class="nav-item">
                         <a href="{% url 'reports_dashboard' %}" class="nav-link {% if route_name == 'reports_dashboard' %}active{% endif %}">
-                            <i class="bi bi-pie-chart"></i> Загальна аналітика
+                            <i class="bi bi-pie-chart"></i> Зведена аналітика
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="{% url 'project_dashboard' %}" class="nav-link {% if route_name == 'project_dashboard' %}active{% endif %}">
-                            <i class="bi bi-graph-up-arrow"></i> Project Dashboard
+                            <i class="bi bi-graph-up-arrow"></i> Дашборд проекту
                         </a>
                     </li>
-                    <li class="nav-item"><a href="{% url 'financial_report' %}" class="nav-link {% if route_name == 'financial_report' %}active{% endif %}"><i class="bi bi-cash-coin"></i> Фінанси</a></li>
-                    <li class="nav-item"><a href="{% url 'planning_report' %}" class="nav-link {% if route_name == 'planning_report' %}active{% endif %}"><i class="bi bi-calendar-check"></i> План закупівель</a></li>
-                    <li class="nav-item"><a href="{% url 'period_report' %}" class="nav-link {% if route_name == 'period_report' %}active{% endif %}"><i class="bi bi-calendar-range"></i> Оборотка</a></li>
-                    <li class="nav-item"><a href="{% url 'stock_balance_report' %}" class="nav-link {% if route_name == 'stock_balance_report' %}active{% endif %}"><i class="bi bi-box-seam"></i> Залишки</a></li>
-                    <li class="nav-item"><a href="{% url 'writeoff_report' %}" class="nav-link {% if route_name == 'writeoff_report' %}active{% endif %}"><i class="bi bi-journal-minus"></i> Списання</a></li>
-                    <li class="nav-item"><a href="{% url 'problem_areas' %}" class="nav-link {% if route_name == 'problem_areas' %}active{% endif %}"><i class="bi bi-exclamation-triangle"></i> Проблеми</a></li>
-                    <li class="nav-item"><a href="{% url 'objects_comparison' %}" class="nav-link {% if route_name == 'objects_comparison' %}active{% endif %}"><i class="bi bi-bar-chart-steps"></i> Порівняння</a></li>
+                    <li class="nav-item">
+                        <a href="{% url 'objects_comparison' %}" class="nav-link {% if route_name == 'objects_comparison' %}active{% endif %}">
+                            <i class="bi bi-bar-chart-steps"></i> Порівняння об'єктів
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'problem_areas' %}" class="nav-link {% if route_name == 'problem_areas' %}active{% endif %}">
+                            <i class="bi bi-exclamation-triangle"></i> Проблемні зони
+                        </a>
+                    </li>
 
                     <div class="sidebar-heading">Будівництво</div>
-                    <li class="nav-item"><a href="{% url 'concrete_analytics' %}" class="nav-link {% if route_name == 'concrete_analytics' %}active{% endif %}"><i class="bi bi-bricks"></i> Бетон</a></li>
-                    <li class="nav-item"><a href="{% url 'rebar_analytics' %}" class="nav-link {% if route_name == 'rebar_analytics' %}active{% endif %}"><i class="bi bi-grid-3x3"></i> Арматура</a></li>
-                    <li class="nav-item"><a href="{% url 'mechanisms_analytics' %}" class="nav-link {% if route_name == 'mechanisms_analytics' %}active{% endif %}"><i class="bi bi-truck-front"></i> Механізми</a></li>
+                    <li class="nav-item">
+                        <a href="{% url 'concrete_analytics' %}" class="nav-link {% if route_name == 'concrete_analytics' %}active{% endif %}">
+                            <i class="bi bi-bricks"></i> Бетон
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'rebar_analytics' %}" class="nav-link {% if route_name == 'rebar_analytics' %}active{% endif %}">
+                            <i class="bi bi-grid-3x3"></i> Арматура
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'mechanisms_analytics' %}" class="nav-link {% if route_name == 'mechanisms_analytics' %}active{% endif %}">
+                            <i class="bi bi-truck-front"></i> Механізми
+                        </a>
+                    </li>
 
                     <div class="sidebar-heading">Журнали</div>
-                    <li class="nav-item"><a href="{% url 'transfer_journal' %}" class="nav-link {% if route_name == 'transfer_journal' %}active{% endif %}"><i class="bi bi-arrow-left-right"></i> Переміщення</a></li>
-                    <li class="nav-item"><a href="{% url 'transfer_analytics' %}" class="nav-link {% if route_name == 'transfer_analytics' %}active{% endif %}"><i class="bi bi-activity"></i> Аналітика руху</a></li>
-                    <li class="nav-item"><a href="{% url 'movement_history' %}" class="nav-link {% if route_name == 'movement_history' %}active{% endif %}"><i class="bi bi-clock-history"></i> Вся історія</a></li>
-                    <li class="nav-item"><a href="{% url 'procurement_journal' %}" class="nav-link {% if route_name == 'procurement_journal' %}active{% endif %}"><i class="bi bi-cart4"></i> Закупівлі</a></li>
-                    <li class="nav-item"><a href="{% url 'global_audit_log' %}" class="nav-link {% if route_name == 'global_audit_log' %}active{% endif %}"><i class="bi bi-shield-lock"></i> Аудит</a></li>
+                    <li class="nav-item">
+                        <a href="{% url 'movement_history' %}" class="nav-link {% if route_name == 'movement_history' %}active{% endif %}">
+                            <i class="bi bi-clock-history"></i> Історія руху
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'transfer_analytics' %}" class="nav-link {% if route_name == 'transfer_analytics' %}active{% endif %}">
+                            <i class="bi bi-activity"></i> Аналітика логістики
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{% url 'global_audit_log' %}" class="nav-link {% if route_name == 'global_audit_log' %}active{% endif %}">
+                            <i class="bi bi-shield-lock"></i> Аудит дій
+                        </a>
+                    </li>
                 
                 {% else %}
                     <!-- === МЕНЮ ПРОРАБА === -->

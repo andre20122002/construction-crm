@@ -6,25 +6,36 @@
 
 {% block extra_css %}
 <style>
-    /* Анімації */
-    .hover-scale { transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-    .hover-scale:hover { transform: scale(1.03); }
-    
-    /* === СТИЛІ ДЛЯ ПРОРАБА (MOBILE-FIRST DARK MODE) === */
+    /* === ЗАГАЛЬНІ АНІМАЦІЇ === */
+    .hover-scale {
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .hover-scale:hover {
+        transform: scale(1.03);
+    }
+    .hover-lift {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .hover-lift:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+    }
+
     {% if role == 'foreman' %}
+    /* === СТИЛІ ДЛЯ ПРОРАБА (MOBILE-FIRST DARK MODE) === */
     body {
         background-color: #121212 !important;
         color: #e0e0e0;
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
-    
+
     /* Навігація */
     .navbar {
         background-color: #1f1f1f !important;
         border-bottom: 1px solid #333;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
     }
-    
+
     /* Картки */
     .card {
         background-color: #1e1e1e;
@@ -32,7 +43,7 @@
         border-radius: 16px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
-    
+
     /* Кнопки швидких дій */
     .action-btn {
         display: flex;
@@ -49,6 +60,14 @@
         overflow: hidden;
         border: none;
         box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .action-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+    }
+    .action-btn:active {
+        transform: scale(0.98);
     }
     .action-btn i {
         font-size: 2.2rem;
@@ -65,13 +84,12 @@
         background: linear-gradient(rgba(255,255,255,0.1), rgba(255,255,255,0));
         z-index: 1;
     }
-    
+
     /* Градієнти кнопок */
     .bg-gradient-order { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000 !important; }
     .bg-gradient-writeoff { background: linear-gradient(135deg, #ef4444, #b91c1c); }
     .bg-gradient-income { background: linear-gradient(135deg, #10b981, #047857); }
     .bg-gradient-warehouse { background: linear-gradient(135deg, #6366f1, #4338ca); }
-    /* Нова кнопка QR */
     .bg-gradient-qr { background: linear-gradient(135deg, #0dcaf0, #0aa2c0); color: #000 !important; }
 
     /* Список заявок */
@@ -82,16 +100,21 @@
         margin-bottom: 8px;
         border-radius: 12px !important;
         padding: 1rem;
+        transition: background-color 0.15s, transform 0.15s;
+    }
+    .list-group-item:hover {
+        background-color: #2d2d2d;
+        transform: translateX(4px);
     }
     .list-group-item:last-child { margin-bottom: 0; }
-    
+
     /* Бейджі */
     .badge-soft {
         background-color: rgba(255, 255, 255, 0.1);
         color: #fff;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     /* Тексти */
     .text-muted { color: #888 !important; }
     h1, h2, h3, h4, h5, h6 { color: #fff; }
@@ -112,11 +135,12 @@
         text-decoration: none;
         border-radius: 8px;
         margin-bottom: 4px;
-        transition: background-color 0.2s;
+        transition: background-color 0.2s, padding-left 0.2s;
     }
     .sidebar-link:hover, .sidebar-link.active {
         background-color: #333;
         color: #fff;
+        padding-left: 20px;
     }
     .sidebar-link i {
         font-size: 1.2rem;
@@ -134,6 +158,54 @@
     #reader video {
         object-fit: cover;
         border-radius: 12px;
+    }
+
+    /* Статистична картка */
+    .stat-card {
+        background: linear-gradient(135deg, #1e1e1e 0%, #262626 100%);
+        border-radius: 16px;
+        border: 1px solid #333;
+    }
+
+    {% else %}
+    /* === СТИЛІ ДЛЯ МЕНЕДЖЕРА (LIGHT MODE) === */
+    .kpi-card {
+        border: none;
+        border-radius: 16px;
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.12);
+    }
+    .warehouse-card {
+        border: none;
+        border-radius: 16px;
+        transition: all 0.2s;
+        overflow: hidden;
+    }
+    .warehouse-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.12);
+        border-color: #0d6efd !important;
+    }
+    .warehouse-card .card-body {
+        position: relative;
+    }
+    .warehouse-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: linear-gradient(180deg, #0d6efd 0%, #6610f2 100%);
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    .warehouse-card:hover::before {
+        opacity: 1;
     }
     {% endif %}
 </style>
@@ -377,81 +449,112 @@
 
     {% else %}
     <!-- ==================== ІНТЕРФЕЙС МЕНЕДЖЕРА (STANDARD) ==================== -->
-    
+
     <div class="row g-4 mb-4">
         <!-- KPI Cards -->
         <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100 hover-lift border-start border-4 border-primary">
+            <div class="card kpi-card shadow-sm h-100 border-0 position-relative overflow-hidden">
                 <div class="card-body">
-                    <div class="text-uppercase text-muted small fw-bold mb-2">Нові заявки</div>
                     <div class="d-flex align-items-center justify-content-between">
-                        <h2 class="mb-0 fw-bold text-primary">{{ new_orders_count|default:"0" }}</h2>
-                        <div class="icon-shape bg-primary bg-opacity-10 text-primary rounded p-3">
-                            <i class="bi bi-file-earmark-plus fs-4"></i>
+                        <div>
+                            <div class="text-uppercase text-muted small fw-bold mb-2">Нові заявки</div>
+                            <h2 class="mb-0 fw-bold text-primary display-6">{{ new_orders_count|default:"0" }}</h2>
+                            <small class="text-muted">Потребують обробки</small>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 text-primary rounded-3 p-3">
+                            <i class="bi bi-file-earmark-plus fs-2"></i>
                         </div>
                     </div>
-                    <a href="{% url 'manager_dashboard' %}?status=new" class="stretched-link"></a>
+                    <div class="position-absolute bottom-0 start-0 w-100" style="height: 4px; background: linear-gradient(90deg, #0d6efd 0%, #6610f2 100%);"></div>
                 </div>
+                <a href="{% url 'manager_dashboard' %}?status=new" class="stretched-link"></a>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100 hover-lift border-start border-4 border-warning">
+            <div class="card kpi-card shadow-sm h-100 border-0 position-relative overflow-hidden">
                 <div class="card-body">
-                    <div class="text-uppercase text-muted small fw-bold mb-2">Логістика (В дорозі)</div>
                     <div class="d-flex align-items-center justify-content-between">
-                        <h2 class="mb-0 fw-bold text-dark">{{ transit_orders_count|default:"0" }}</h2>
-                        <div class="icon-shape bg-warning bg-opacity-10 text-warning rounded p-3">
-                            <i class="bi bi-truck fs-4"></i>
+                        <div>
+                            <div class="text-uppercase text-muted small fw-bold mb-2">В дорозі</div>
+                            <h2 class="mb-0 fw-bold text-warning display-6">{{ transit_orders_count|default:"0" }}</h2>
+                            <small class="text-muted">Очікують доставки</small>
+                        </div>
+                        <div class="bg-warning bg-opacity-10 text-warning rounded-3 p-3">
+                            <i class="bi bi-truck fs-2"></i>
                         </div>
                     </div>
-                    <a href="{% url 'logistics_dashboard' %}" class="stretched-link"></a>
+                    <div class="position-absolute bottom-0 start-0 w-100" style="height: 4px; background: linear-gradient(90deg, #ffc107 0%, #fd7e14 100%);"></div>
                 </div>
+                <a href="{% url 'logistics_dashboard' %}" class="stretched-link"></a>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100 hover-lift border-start border-4 border-success">
+            <div class="card kpi-card shadow-sm h-100 border-0 position-relative overflow-hidden">
                 <div class="card-body">
-                    <div class="text-uppercase text-muted small fw-bold mb-2">Аналітика</div>
                     <div class="d-flex align-items-center justify-content-between">
-                        <h2 class="mb-0 fw-bold text-success">Звіти</h2>
-                        <div class="icon-shape bg-success bg-opacity-10 text-success rounded p-3">
-                            <i class="bi bi-graph-up-arrow fs-4"></i>
+                        <div>
+                            <div class="text-uppercase text-muted small fw-bold mb-2">Аналітика</div>
+                            <h2 class="mb-0 fw-bold text-success display-6">Звіти</h2>
+                            <small class="text-muted">Переглянути дані</small>
+                        </div>
+                        <div class="bg-success bg-opacity-10 text-success rounded-3 p-3">
+                            <i class="bi bi-graph-up-arrow fs-2"></i>
                         </div>
                     </div>
-                    <a href="{% url 'reports_dashboard' %}" class="stretched-link"></a>
+                    <div class="position-absolute bottom-0 start-0 w-100" style="height: 4px; background: linear-gradient(90deg, #198754 0%, #20c997 100%);"></div>
                 </div>
+                <a href="{% url 'reports_dashboard' %}" class="stretched-link"></a>
             </div>
         </div>
     </div>
 
-    <h5 class="mb-3 text-secondary border-bottom pb-2">🏢 Об'єкти будівництва</h5>
-    
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold text-dark">
+            <i class="bi bi-building me-2 text-primary"></i>Об'єкти будівництва
+        </h5>
+        <a href="{% url 'objects_comparison' %}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-bar-chart-steps me-1"></i>Порівняти
+        </a>
+    </div>
+
     {% if not warehouses %}
-        <div class="alert alert-info shadow-sm">
-            <i class="bi bi-info-circle-fill me-2"></i> Ви поки що не закріплені за жодним складом.
+        <div class="alert alert-info shadow-sm border-0 rounded-3">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+                <div>
+                    <strong>Об'єкти відсутні</strong>
+                    <div class="small">Ви поки що не закріплені за жодним складом або об'єктом.</div>
+                </div>
+            </div>
         </div>
     {% else %}
         <div class="row g-4">
             {% for wh in warehouses %}
             <div class="col-md-6 col-lg-4">
                 <a href="{% url 'warehouse_detail' wh.pk %}" class="text-decoration-none">
-                    <div class="card h-100 border-0 shadow-sm hover-lift">
+                    <div class="card warehouse-card h-100 shadow-sm border">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start mb-3">
-                                <h5 class="card-title fw-bold text-dark mb-0">{{ wh.name }}</h5>
-                                <span class="badge bg-light text-dark border">{{ wh.budget_limit|floatformat:0 }} ₴</span>
+                                <div>
+                                    <h5 class="card-title fw-bold text-dark mb-1">{{ wh.name }}</h5>
+                                    <p class="card-text text-muted small mb-0">
+                                        <i class="bi bi-geo-alt me-1"></i>{{ wh.address|default:"Адреса не вказана" }}
+                                    </p>
+                                </div>
+                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary rounded-pill px-3 py-2">
+                                    {{ wh.budget_limit|floatformat:0 }} ₴
+                                </span>
                             </div>
-                            <p class="card-text text-muted small mb-3">
-                                <i class="bi bi-geo-alt me-1"></i> {{ wh.address|default:"Адреса не вказана" }}
-                            </p>
                             <div class="d-flex align-items-center pt-3 border-top">
-                                <div class="avatar rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 14px;">
+                                <div class="rounded-circle bg-gradient text-white d-flex align-items-center justify-content-center me-2" style="width: 36px; height: 36px; font-size: 14px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
                                     {% if wh.responsible_user %}
                                         {{ wh.responsible_user.username|slice:":1"|upper }}
-                                    {% else %}?{% endif %}
+                                    {% else %}
+                                        <i class="bi bi-person"></i>
+                                    {% endif %}
                                 </div>
-                                <div class="small text-muted">
-                                    <span class="d-block" style="font-size: 0.75rem;">Відповідальний:</span>
+                                <div class="small">
+                                    <span class="text-muted d-block" style="font-size: 0.7rem; line-height: 1;">Відповідальний</span>
                                     <span class="fw-bold text-dark">
                                         {{ wh.responsible_user.get_full_name|default:"Не призначено" }}
                                     </span>
