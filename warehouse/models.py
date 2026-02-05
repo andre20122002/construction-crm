@@ -95,6 +95,20 @@ class Material(models.Model):
     def __str__(self):
         return f"{self.name} ({self.unit})"
 
+    @property
+    def total_stock(self):
+        """
+        Загальний залишок матеріалу по всіх складах.
+        Сума приходів (IN) мінус сума витрат (OUT, LOSS).
+        """
+        from django.db.models import Sum
+
+        txs = self.transactions.all()
+        in_qty = txs.filter(transaction_type='IN').aggregate(s=Sum('quantity'))['s'] or Decimal("0.000")
+        out_qty = txs.filter(transaction_type__in=['OUT', 'LOSS']).aggregate(s=Sum('quantity'))['s'] or Decimal("0.000")
+
+        return (in_qty - out_qty).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+
     def update_material_avg_price(self):
         """
         Перераховує середньозважену ціну на основі всіх приходів (IN).
