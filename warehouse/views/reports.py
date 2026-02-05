@@ -327,9 +327,11 @@ def stock_balance_report(request):
             column = col[0].column_letter
             for cell in col:
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except: pass
+                    cell_len = len(str(cell.value)) if cell.value is not None else 0
+                    if cell_len > max_length:
+                        max_length = cell_len
+                except (TypeError, AttributeError):
+                    pass
             adjusted_width = (max_length + 2)
             ws.column_dimensions[column].width = adjusted_width
 

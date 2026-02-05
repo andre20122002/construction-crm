@@ -202,20 +202,24 @@ class WarehouseLogicTests(TestCase):
 
     def test_decimal_precision(self):
         """7) Перевірка точності Decimal (3 знаки)."""
+        from warehouse.services.inventory import InvalidQuantityError
+
         # Спроба додати дробове число (float)
         inventory.create_incoming(self.material_cement, self.warehouse_main, 10.12345, self.user)
-        
+
         balance = get_warehouse_balance(self.warehouse_main)
         # Має округлитись до 3 знаків: 10.123
         self.assertEqual(balance[self.material_cement], Decimal('10.123'))
-        
-        # Додаємо ще
-        inventory.create_incoming(self.material_cement, self.warehouse_main, 0.0004, self.user) # < 0.0005 -> 0.000
+
+        # Кількість 0.0004 округлюється до 0.000 - має викликати помилку
+        with self.assertRaises(InvalidQuantityError):
+            inventory.create_incoming(self.material_cement, self.warehouse_main, 0.0004, self.user)
+
         balance = get_warehouse_balance(self.warehouse_main)
-        self.assertEqual(balance[self.material_cement], Decimal('10.123')) # Без змін
-        
-        # Додаємо щось, що округлиться вгору
-        inventory.create_incoming(self.material_cement, self.warehouse_main, 0.0006, self.user) # -> 0.001
+        self.assertEqual(balance[self.material_cement], Decimal('10.123'))  # Без змін
+
+        # Додаємо щось, що округлиться вгору (0.0006 -> 0.001)
+        inventory.create_incoming(self.material_cement, self.warehouse_main, 0.0006, self.user)
         balance = get_warehouse_balance(self.warehouse_main)
         self.assertEqual(balance[self.material_cement], Decimal('10.124'))
 

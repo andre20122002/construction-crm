@@ -68,6 +68,16 @@ def to_decimal(value, places=3):
     except InvalidOperation:
         return Decimal("0")
 
+class InvalidQuantityError(ValueError):
+    """Помилка: некоректна кількість (від'ємна або нульова)."""
+    pass
+
+
+class InvalidPriceError(ValueError):
+    """Помилка: некоректна ціна (від'ємна)."""
+    pass
+
+
 def create_incoming(material, warehouse, quantity, user, price=None, description="", date=None, photo=None):
     """
     Реєструє прихід матеріалу на склад (Закупівля / Введення залишків).
@@ -75,13 +85,20 @@ def create_incoming(material, warehouse, quantity, user, price=None, description
     """
     if date is None:
         date = timezone.now().date()
-        
+
     qty_dec = to_decimal(quantity, places=3)
-    
+
+    # Валідація кількості
+    if qty_dec <= 0:
+        raise InvalidQuantityError(f"Кількість має бути додатною, отримано: {qty_dec}")
+
     if price is None:
         price_dec = Decimal("0.00")
     else:
         price_dec = to_decimal(price, places=2)
+        # Валідація ціни
+        if price_dec < 0:
+            raise InvalidPriceError(f"Ціна не може бути від'ємною, отримано: {price_dec}")
     
     # IN не вимагає перевірки залишків
     txn = Transaction.objects.create(
@@ -108,15 +125,17 @@ def create_writeoff(material, warehouse, quantity, user, transaction_type='OUT',
     """
     if date is None:
         date = timezone.now().date()
-        
+
     if reason:
         transaction_type = reason
-        
+
     qty_dec = to_decimal(quantity, places=3)
-    
+
+    # Валідація кількості
+    if qty_dec <= 0:
+        raise InvalidQuantityError(f"Кількість має бути додатною, отримано: {qty_dec}")
+
     # Валідація залишків (Atomic block recommended at view level, but good to have check here)
-    # Якщо викликається з view, який вже має atomic, це ок.
-    # Додамо atomic локально, щоб гарантувати цілісність перевірки і запису.
     with transaction.atomic():
         assert_stock_available(warehouse, material, qty_dec)
         
@@ -188,32 +207,34 @@ def process_order_receipt(order, items_data, user, proof_photo=None, comment="")
     """
     Прийом товарів по заявці.
     items_data: dict {item_id: quantity_fact}
+
+    ВАЖЛИВО: Спочатку валідуємо ВСІ позиції, потім створюємо транзакції.
+    Це запобігає частковому прийому при помилці валідації.
     """
+    import logging
+    logger = logging.getLogger('warehouse')
+
     transfer_group_id = None
-    
     if order.source_warehouse:
         transfer_group_id = uuid.uuid4()
 
-    created_transactions = []
+    # === ФАЗА 1: Валідація всіх позицій ===
+    validated_items = []
 
     for item in order.items.all():
         qty_raw = items_data.get(item.id) or items_data.get(str(item.id))
-            
+
         if qty_raw is None:
             continue
-            
+
         qty_dec = to_decimal(qty_raw, places=3)
         if qty_dec <= 0:
             continue
 
-        # Якщо це переміщення (логістика), перевіряємо чи є товар на складі-джерелі
+        # Якщо це переміщення, перевіряємо залишки на джерелі
         if order.source_warehouse:
-             assert_stock_available(order.source_warehouse, item.material, qty_dec)
+            assert_stock_available(order.source_warehouse, item.material, qty_dec)
 
-        # Оновлюємо факт в позиції заявки
-        item.quantity_fact = qty_dec
-        item.save()
-        
         # Визначаємо ціну
         price_dec = Decimal("0.00")
         if order.source_warehouse:
@@ -221,7 +242,25 @@ def process_order_receipt(order, items_data, user, proof_photo=None, comment="")
         else:
             if item.supplier_price is not None:
                 price_dec = item.supplier_price
-        
+
+        validated_items.append({
+            'item': item,
+            'qty_dec': qty_dec,
+            'price_dec': price_dec,
+        })
+
+    # === ФАЗА 2: Створення транзакцій (тільки якщо всі позиції валідні) ===
+    created_transactions = []
+
+    for vi in validated_items:
+        item = vi['item']
+        qty_dec = vi['qty_dec']
+        price_dec = vi['price_dec']
+
+        # Оновлюємо факт в позиції заявки
+        item.quantity_fact = qty_dec
+        item.save()
+
         # 1. Створюємо прихід (IN) на цільовий склад
         in_txn = Transaction.objects.create(
             transaction_type='IN',
@@ -237,7 +276,7 @@ def process_order_receipt(order, items_data, user, proof_photo=None, comment="")
             description=comment or f"Прийом по заявці #{order.id}"
         )
         created_transactions.append(in_txn)
-        
+
         # 2. Якщо це внутрішнє переміщення, створюємо списання (OUT) з джерела
         if order.source_warehouse and transfer_group_id:
             Transaction.objects.create(
@@ -245,24 +284,27 @@ def process_order_receipt(order, items_data, user, proof_photo=None, comment="")
                 warehouse=order.source_warehouse,
                 material=item.material,
                 quantity=qty_dec,
-                price=price_dec, 
+                price=price_dec,
                 created_by=user,
                 order=order,
                 date=timezone.now().date(),
                 transfer_group_id=transfer_group_id,
                 description=f"Переміщення по заявці #{order.id} на {order.warehouse.name}"
             )
-            
+
         if not order.source_warehouse and price_dec > 0:
             item.material.update_material_avg_price()
 
+    # === ФАЗА 3: Оновлення статусу заявки ===
     order.status = 'completed'
-    
+
     if proof_photo and hasattr(order, 'proof_photo'):
         try:
             order.proof_photo = proof_photo
             order.save()
-        except Exception:
+        except (IOError, OSError) as e:
+            # Логуємо помилку збереження фото, але зберігаємо статус
+            logger.warning(f"Failed to save proof_photo for order #{order.id}: {e}")
             order.save(update_fields=['status'])
     else:
         order.save(update_fields=['status'])

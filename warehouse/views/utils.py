@@ -219,11 +219,15 @@ def log_audit(request, action_type, affected_object=None, old_val=None, new_val=
             ip = meta.get('REMOTE_ADDR')
     
     # 3. Smart creation: pass only allowed fields
+    import logging
+    logger = logging.getLogger('warehouse')
+
     try:
         allowed_fields = {f.name for f in AuditLog._meta.fields}
-    except Exception:
+    except (AttributeError, TypeError) as e:
+        logger.debug(f"Could not get AuditLog fields: {e}")
         allowed_fields = {'user', 'action_type', 'old_value', 'new_value', 'ip_address'}
-    
+
     audit_kwargs = {
         'user': user,
         'action_type': action_type,
@@ -231,14 +235,15 @@ def log_audit(request, action_type, affected_object=None, old_val=None, new_val=
         'new_value': str(new_val) if new_val is not None else None,
         'ip_address': ip
     }
-    
+
     if 'affected_object' in allowed_fields:
         audit_kwargs['affected_object'] = affected_object
-    
+
     try:
         AuditLog.objects.create(**audit_kwargs)
-    except Exception:
-        pass
+    except (ValueError, TypeError) as e:
+        # Не блокуємо основну операцію через помилку логування
+        logger.warning(f"Failed to create AuditLog: {e}")
 
 def enrich_transfers(queryset):
     """

@@ -9,10 +9,14 @@ from django.utils import timezone
 
 # --- Models Import ---
 from ..models import (
-    Order, OrderItem, OrderComment, Material, 
+    Order, OrderItem, OrderComment, Material,
     Warehouse, Transaction, Supplier, Category, ConstructionStage, SupplierPrice
 )
-from .utils import get_warehouse_balance, log_audit
+from .utils import (
+    get_warehouse_balance, log_audit,
+    get_allowed_warehouses, restrict_warehouses_qs, enforce_warehouse_access_or_404
+)
+from ..decorators import staff_required
 
 # --- Forms Import ---
 try:
@@ -39,30 +43,38 @@ except ImportError:
     OrderFnItemFormSet = inlineformset_factory(Order, OrderItem, form=OrderItemForm, extra=1)
 
 
-@login_required
+@staff_required
 def dashboard(request):
     """
     Головна панель менеджера (Dashboard).
+    Фільтрує дані за дозволеними складами.
     """
-    # KPI Статистика
+    # Отримуємо дозволені склади для користувача
+    allowed_warehouses = get_allowed_warehouses(request.user)
+
+    # Базовий QuerySet заявок з фільтрацією по дозволених складах
+    base_orders = Order.objects.filter(warehouse__in=allowed_warehouses)
+
+    # KPI Статистика (тільки для дозволених складів)
     orders_stat = {
-        'new': Order.objects.filter(status='new').count(),
-        'approved': Order.objects.filter(status='approved').count(),
-        'purchasing': Order.objects.filter(status='purchasing').count(),
-        'active_total': Order.objects.exclude(status__in=['completed', 'rejected', 'draft']).count()
+        'new': base_orders.filter(status='new').count(),
+        'approved': base_orders.filter(status='approved').count(),
+        'purchasing': base_orders.filter(status='purchasing').count(),
+        'active_total': base_orders.exclude(status__in=['completed', 'rejected', 'draft']).count()
     }
 
-    # Фільтрація списку останніх заявок (якщо передано параметри)
-    recent_orders = Order.objects.select_related('warehouse', 'created_by').prefetch_related('items__material').order_by('-created_at')
-    
+    # Фільтрація списку останніх заявок
+    recent_orders = base_orders.select_related('warehouse', 'created_by').prefetch_related('items__material').order_by('-created_at')
+
     status = request.GET.get('status')
     if status:
         recent_orders = recent_orders.filter(status=status)
-        
+
     # Ліміт 10 для дашборду
     recent_orders = recent_orders[:10]
 
-    low_stock_materials = Material.objects.filter(min_limit__gt=0)[:5] 
+    # Матеріали з низьким запасом (для дозволених складів)
+    low_stock_materials = Material.objects.filter(min_limit__gt=0).order_by('-min_limit')[:5]
 
     context = {
         'stats': orders_stat,
@@ -74,12 +86,18 @@ def dashboard(request):
     return render(request, 'warehouse/manager_dashboard.html', context)
 
 
-@login_required
+@staff_required
 def order_list(request):
     """
     Список заявок з розширеною фільтрацією та пошуком.
+    Фільтрує за дозволеними складами.
     """
-    orders = Order.objects.select_related('warehouse', 'created_by').prefetch_related('items__material').order_by('-created_at')
+    # Фільтруємо заявки за дозволеними складами
+    allowed_warehouses = get_allowed_warehouses(request.user)
+    orders = Order.objects.filter(warehouse__in=allowed_warehouses)\
+        .select_related('warehouse', 'created_by')\
+        .prefetch_related('items__material')\
+        .order_by('-created_at')
 
     status = request.GET.get('status')
     priority = request.GET.get('priority')
@@ -91,15 +109,16 @@ def order_list(request):
     if priority:
         orders = orders.filter(priority=priority)
     if warehouse_id:
-        orders = orders.filter(warehouse_id=warehouse_id)
+        # Перевіряємо, що обраний склад є в дозволених
+        if allowed_warehouses.filter(pk=warehouse_id).exists():
+            orders = orders.filter(warehouse_id=warehouse_id)
 
     if search_query:
-        # Пошук по позиціях (items__material) замість legacy order.material
         orders = orders.filter(
             Q(id__icontains=search_query) |
             Q(note__icontains=search_query) |
             Q(warehouse__name__icontains=search_query) |
-            Q(items__material__name__icontains=search_query) 
+            Q(items__material__name__icontains=search_query)
         ).distinct()
 
     paginator = Paginator(orders, 20)
@@ -108,7 +127,7 @@ def order_list(request):
 
     context = {
         'orders': page_obj,
-        'warehouses': Warehouse.objects.all(),
+        'warehouses': allowed_warehouses,  # Тільки дозволені склади у фільтрі
         'status_choices': Order.STATUS_CHOICES,
         'current_status': status,
         'page_title': 'Усі заявки'
@@ -116,13 +135,17 @@ def order_list(request):
     return render(request, 'warehouse/order_list.html', context)
 
 
-@login_required
+@staff_required
 def order_detail(request, pk):
     """
     Детальний перегляд заявки: інформація, позиції, коментарі (чат).
+    Перевіряє доступ до складу заявки.
     """
     order = get_object_or_404(Order, pk=pk)
-    
+
+    # Перевірка доступу до складу заявки
+    enforce_warehouse_access_or_404(request.user, order.warehouse)
+
     if request.method == 'POST' and 'add_comment' in request.POST:
         form = OrderCommentForm(request.POST)
         if form.is_valid():
@@ -146,32 +169,41 @@ def order_detail(request, pk):
     return render(request, 'warehouse/order_detail.html', context)
 
 
-@login_required
+@staff_required
 def order_create(request):
     """
     Створення нової заявки менеджером (Order + Items через FormSet).
+    Обмежує вибір складів до дозволених.
     """
     if request.method == 'POST':
         form = OrderForm(request.POST, request.FILES)
         formset = OrderFnItemFormSet(request.POST)
-        
+
         if form.is_valid() and formset.is_valid():
+            # Перевіряємо, що обраний склад є в дозволених
+            warehouse = form.cleaned_data.get('warehouse')
+            if warehouse:
+                enforce_warehouse_access_or_404(request.user, warehouse)
+
             with transaction.atomic():
                 order = form.save(commit=False)
                 order.created_by = request.user
                 order.status = 'new'
                 order.save()
-                
+
                 # Зберігаємо позиції
                 formset.instance = order
                 formset.save()
-                
+
                 log_audit(request, 'CREATE', order, new_val=f"Order #{order.id} created by manager")
                 messages.success(request, f"Заявку #{order.id} створено успішно.")
                 return redirect('manager_order_detail', pk=order.id)
     else:
         form = OrderForm()
         formset = OrderFnItemFormSet()
+
+    # Обмежуємо вибір складів
+    form.fields['warehouse'].queryset = get_allowed_warehouses(request.user)
 
     context = {
         'form': form,
@@ -181,28 +213,34 @@ def order_create(request):
     return render(request, 'warehouse/order_form.html', context)
 
 
-@login_required
+@staff_required
 def order_edit(request, pk):
     """
     Редагування заявки та її позицій (Items через FormSet).
     """
     order = get_object_or_404(Order, pk=pk)
 
+    # Перевірка доступу до складу заявки
+    enforce_warehouse_access_or_404(request.user, order.warehouse)
+
     if request.method == 'POST':
         form = OrderForm(request.POST, request.FILES, instance=order)
         formset = OrderFnItemFormSet(request.POST, instance=order)
-        
+
         if form.is_valid() and formset.is_valid():
             with transaction.atomic():
                 form.save()
                 formset.save()
-                
+
                 log_audit(request, 'UPDATE', order, new_val="Edited by manager")
                 messages.success(request, "Заявку оновлено.")
                 return redirect('manager_order_detail', pk=pk)
     else:
         form = OrderForm(instance=order)
         formset = OrderFnItemFormSet(instance=order)
+
+    # Обмежуємо вибір складів
+    form.fields['warehouse'].queryset = get_allowed_warehouses(request.user)
 
     context = {
         'form': form,
@@ -213,13 +251,14 @@ def order_edit(request, pk):
     return render(request, 'warehouse/order_form.html', context)
 
 
-@login_required
+@staff_required
 def order_approve(request, pk):
     """
     Погодження заявки.
     """
     order = get_object_or_404(Order, pk=pk)
-    
+    enforce_warehouse_access_or_404(request.user, order.warehouse)
+
     if request.method == 'POST':
         order.status = 'approved'
         order.save()
@@ -240,13 +279,14 @@ def order_approve(request, pk):
     })
 
 
-@login_required
+@staff_required
 def order_reject(request, pk):
     """
     Відхилення заявки.
     """
     order = get_object_or_404(Order, pk=pk)
-    
+    enforce_warehouse_access_or_404(request.user, order.warehouse)
+
     if request.method == 'POST':
         reason = request.POST.get('reason', 'Без пояснення')
         order.status = 'rejected'
@@ -268,7 +308,7 @@ def order_reject(request, pk):
     })
 
 
-@login_required
+@staff_required
 def material_list(request):
     """
     Довідник матеріалів.
@@ -292,7 +332,7 @@ def material_list(request):
     return render(request, 'warehouse/material_list.html', context)
 
 
-@login_required
+@staff_required
 def material_detail(request, pk):
     """
     Детальна сторінка матеріалу: загальний залишок, розподіл по складах, історія руху.
@@ -340,13 +380,14 @@ def material_detail(request, pk):
 # SPLIT ORDER (РОЗДІЛЕННЯ ЗАЯВКИ)
 # ==============================================================================
 
-@login_required
+@staff_required
 def split_order(request, pk):
     """
     Розділення заявки на декілька частин (наприклад, різні постачальники).
     Працює з items, а не з legacy material field.
     """
     original_order = get_object_or_404(Order, pk=pk)
+    enforce_warehouse_access_or_404(request.user, original_order.warehouse)
     items = original_order.items.select_related('material').all()
     
     # Групуємо постачальників для форми
@@ -430,19 +471,23 @@ def split_order(request, pk):
 manager_dashboard = dashboard
 manager_order_detail = order_detail
 
-@login_required
+@staff_required
 def manager_process_order(request, pk):
     """
     Редирект на деталі заявки, оскільки процес погодження змінено.
     Відображає шаблон-повідомлення.
     """
     order = get_object_or_404(Order, pk=pk)
+    enforce_warehouse_access_or_404(request.user, order.warehouse)
     return render(request, 'warehouse/manager_process_order.html', {'order': order})
 
+
 # Stubs
-@login_required
+@staff_required
 def create_po(request, pk):
     """
     Формування PO (Purchase Order).
     """
+    order = get_object_or_404(Order, pk=pk)
+    enforce_warehouse_access_or_404(request.user, order.warehouse)
     return redirect('print_order_pdf', pk=pk)
