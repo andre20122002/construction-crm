@@ -283,7 +283,11 @@ def enrich_transfers(queryset):
             
     return list(grouped_transfers.values())
 
+from ..decorators import rate_limit
+
+
 @login_required
+@rate_limit(requests_per_minute=60, key_prefix='ajax_stock')
 def ajax_warehouse_stock(request, warehouse_id=None):
     """
     AJAX API: Повертає залишки по конкретному складу.
@@ -343,6 +347,7 @@ def ajax_warehouse_stock(request, warehouse_id=None):
     })
 
 @login_required
+@rate_limit(requests_per_minute=120, key_prefix='ajax_materials')
 def ajax_materials(request):
     """
     AJAX API: Пошук матеріалів (Autocomplete).

@@ -99,27 +99,32 @@ class Material(models.Model):
         """
         Перераховує середньозважену ціну на основі всіх приходів (IN).
         Використовує тільки Decimal для точності.
+        Використовує select_for_update для запобігання race conditions.
         """
-        # Беремо всі приходи (IN)
-        in_txs = self.transactions.filter(transaction_type='IN')
-        
-        # Агрегуємо: sum(qty * price), sum(qty)
-        # Використовуємо output_field=DecimalField, щоб БД не повертала float
-        aggregates = in_txs.aggregate(
-            total_value=Sum(F('quantity') * F('price'), output_field=DecimalField(max_digits=20, decimal_places=2)),
-            total_qty=Sum('quantity', output_field=DecimalField(max_digits=20, decimal_places=3))
-        )
-        
-        total_val = aggregates['total_value'] or Decimal("0.00")
-        total_qty = aggregates['total_qty'] or Decimal("0.000")
-        
-        if total_qty > 0:
-            self.current_avg_price = (total_val / total_qty).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        else:
-            # Якщо немає приходів, ціна не змінюється
-            pass 
-            
-        self.save(update_fields=['current_avg_price'])
+        from django.db import transaction
+
+        with transaction.atomic():
+            # Блокуємо рядок матеріалу для оновлення
+            locked_material = Material.objects.select_for_update().get(pk=self.pk)
+
+            # Беремо всі приходи (IN)
+            in_txs = locked_material.transactions.filter(transaction_type='IN')
+
+            # Агрегуємо: sum(qty * price), sum(qty)
+            aggregates = in_txs.aggregate(
+                total_value=Sum(F('quantity') * F('price'), output_field=DecimalField(max_digits=20, decimal_places=2)),
+                total_qty=Sum('quantity', output_field=DecimalField(max_digits=20, decimal_places=3))
+            )
+
+            total_val = aggregates['total_value'] or Decimal("0.00")
+            total_qty = aggregates['total_qty'] or Decimal("0.000")
+
+            if total_qty > 0:
+                new_price = (total_val / total_qty).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                # Оновлюємо через UPDATE запит для атомарності
+                Material.objects.filter(pk=self.pk).update(current_avg_price=new_price)
+                # Оновлюємо локальний об'єкт
+                self.current_avg_price = new_price
 
 
 class ConstructionStage(models.Model):

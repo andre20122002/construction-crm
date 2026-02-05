@@ -13,6 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from ..models import Order, UserProfile, Warehouse, ConstructionStage, Material, Transaction
 from ..forms import UserUpdateForm, ProfileUpdateForm
 from .utils import get_user_warehouses, get_warehouse_balance, check_access
+from ..decorators import rate_limit
 
 # ==============================================================================
 # ГОЛОВНА СТОРІНКА
@@ -255,6 +256,7 @@ def material_detail(request, pk):
 
 @login_required
 @require_GET
+@rate_limit(requests_per_minute=60, key_prefix='ajax_stages')
 def load_stages(request):
     """
     API: Повертає список етапів будівництва для вибраного складу.
@@ -276,6 +278,7 @@ def load_stages(request):
 
 @login_required
 @require_GET
+@rate_limit(requests_per_minute=120, key_prefix='ajax_mat_general')
 def ajax_materials(request):
     """
     API: Пошук матеріалів для TomSelect (Autocomplete).

@@ -206,6 +206,25 @@ else:
         },
     }
 
+
+# --- CACHING ---
+
+# Локальний кеш для development, Redis для production (опційно)
+CACHES = {
+    'default': {
+        'BACKEND': os.getenv(
+            'CACHE_BACKEND',
+            'django.core.cache.backends.locmem.LocMemCache'
+        ),
+        'LOCATION': os.getenv('CACHE_LOCATION', 'unique-snowflake'),
+        'TIMEOUT': 300,  # 5 хвилин за замовчуванням
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
+
+
 # Налаштування для завантаження файлів (фото)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

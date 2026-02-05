@@ -2,14 +2,52 @@ from django import forms
 from django.contrib.auth.models import User
 from django.forms import inlineformset_factory
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db.models import Sum, Case, When, F, DecimalField
 from decimal import Decimal
 from django.urls import reverse
 
 from .models import (
-    Transaction, Order, OrderItem, OrderComment, 
+    Transaction, Order, OrderItem, OrderComment,
     UserProfile, Warehouse, Category, ConstructionStage, Material
 )
+
+
+# ==============================================================================
+# FILE UPLOAD VALIDATORS
+# ==============================================================================
+
+# Максимальний розмір файлу: 10 MB
+MAX_UPLOAD_SIZE_MB = 10
+MAX_UPLOAD_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+# Дозволені розширення для зображень
+ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+
+# Дозволені розширення для документів
+ALLOWED_DOC_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png']
+
+
+def validate_file_size(file):
+    """Валідатор розміру файлу."""
+    if file and hasattr(file, 'size'):
+        if file.size > MAX_UPLOAD_SIZE:
+            raise ValidationError(
+                f"Файл занадто великий. Максимальний розмір: {MAX_UPLOAD_SIZE_MB} MB. "
+                f"Ваш файл: {file.size / (1024 * 1024):.1f} MB"
+            )
+
+
+def validate_image_file(file):
+    """Валідатор для зображень (розмір + тип)."""
+    if file:
+        validate_file_size(file)
+        # Перевірка розширення
+        ext = file.name.split('.')[-1].lower() if '.' in file.name else ''
+        if ext not in ALLOWED_IMAGE_EXTENSIONS:
+            raise ValidationError(
+                f"Недозволений тип файлу. Дозволені: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+            )
 
 # ==============================================================================
 # 1. ФОРМИ ТРАНЗАКЦІЙ (INVENTORY MOVEMENT)
@@ -54,8 +92,15 @@ class TransactionForm(forms.ModelForm):
         widgets = {
             'warehouse': forms.Select(attrs={'class': 'form-select'}),
             'description': forms.Textarea(attrs={'rows': 2, 'class': 'form-control', 'placeholder': 'Коментар...'}),
-            'photo': forms.FileInput(attrs={'class': 'form-control'}),
+            'photo': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
+
+    def clean_photo(self):
+        """Валідація фото транзакції."""
+        photo = self.cleaned_data.get('photo')
+        if photo:
+            validate_image_file(photo)
+        return photo
         
     def clean(self):
         cleaned_data = super().clean()
@@ -95,8 +140,20 @@ class OrderForm(forms.ModelForm):
             'priority': forms.Select(attrs={'class': 'form-select'}),
             'expected_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'note': forms.Textarea(attrs={'rows': 2, 'class': 'form-control'}),
-            'request_photo': forms.FileInput(attrs={'class': 'form-control'}),
+            'request_photo': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*,.pdf'}),
         }
+
+    def clean_request_photo(self):
+        """Валідація фото/документа заявки."""
+        photo = self.cleaned_data.get('request_photo')
+        if photo:
+            validate_file_size(photo)
+            ext = photo.name.split('.')[-1].lower() if '.' in photo.name else ''
+            if ext not in ALLOWED_DOC_EXTENSIONS:
+                raise ValidationError(
+                    f"Недозволений тип файлу. Дозволені: {', '.join(ALLOWED_DOC_EXTENSIONS)}"
+                )
+        return photo
 
 class OrderItemForm(forms.ModelForm):
     """Форма одного рядка заявки (Матеріал + Кількість)"""
@@ -168,8 +225,15 @@ class ProfileUpdateForm(forms.ModelForm):
         widgets = {
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'position': forms.TextInput(attrs={'class': 'form-control'}),
-            'photo': forms.FileInput(attrs={'class': 'form-control'}),
+            'photo': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}),
         }
+
+    def clean_photo(self):
+        """Валідація фото профілю."""
+        photo = self.cleaned_data.get('photo')
+        if photo:
+            validate_image_file(photo)
+        return photo
 
 
 # ==============================================================================
