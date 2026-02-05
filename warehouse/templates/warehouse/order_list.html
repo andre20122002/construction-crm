@@ -65,7 +65,7 @@
                         <option value="new" {% if f_status == 'new' %}selected{% endif %}>⏳ На погодженні</option>
                         <option value="approved" {% if f_status == 'approved' %}selected{% endif %}>✓ Погоджено</option>
                         <option value="purchasing" {% if f_status == 'purchasing' %}selected{% endif %}>💸 У закупівлі</option>
-                        <option value="in_transit" {% if f_status == 'in_transit' %}selected{% endif %}>🚚 В дорозі</option>
+                        <option value="transit" {% if f_status == 'transit' %}selected{% endif %}>🚚 В дорозі</option>
                         <option value="completed" {% if f_status == 'completed' %}selected{% endif %}>✅ Виконано</option>
                         <option value="rejected" {% if f_status == 'rejected' %}selected{% endif %}>❌ Відхилено</option>
                     </select>
@@ -152,7 +152,7 @@
                                 <span class="badge bg-success status-badge">Погоджено</span>
                             {% elif order.status == 'purchasing' %}
                                 <span class="badge bg-warning text-dark status-badge">Закупівля</span>
-                            {% elif order.status == 'in_transit' %}
+                            {% elif order.status == 'transit' %}
                                 <span class="badge bg-info text-dark status-badge">В дорозі</span>
                             {% elif order.status == 'completed' %}
                                 <span class="badge bg-secondary status-badge">Виконано</span>

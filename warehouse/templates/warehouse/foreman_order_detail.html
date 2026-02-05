@@ -41,7 +41,7 @@
         <div class="text-end">
             <span class="badge 
                 {% if order.status == 'new' %}bg-primary
-                {% elif order.status == 'in_transit' %}bg-info text-dark
+                {% elif order.status == 'transit' %}bg-info text-dark
                 {% elif order.status == 'completed' %}bg-success
                 {% elif order.status == 'rejected' %}bg-danger
                 {% else %}bg-secondary{% endif %}">
@@ -85,7 +85,7 @@
     </div>
 
     <!-- Додаткова інфа про доставку -->
-    {% if order.status == 'in_transit' %}
+    {% if order.status == 'transit' %}
     <div class="card bg-dark border-info mb-4 shadow-sm">
         <div class="card-body">
             <h6 class="text-info fw-bold mb-3"><i class="bi bi-truck"></i> ВАНТАЖ У ДОРОЗІ</h6>

@@ -108,7 +108,7 @@
             {% endif %}
 
             <!-- ІНФО ПРО ДОСТАВКУ (Якщо вже в роботі) -->
-            {% if order.status == 'purchasing' or order.status == 'in_transit' or order.status == 'completed' %}
+            {% if order.status == 'purchasing' or order.status == 'transit' or order.status == 'completed' %}
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-white fw-bold">ℹ️ Інформація про виконання</div>
                 <div class="card-body">

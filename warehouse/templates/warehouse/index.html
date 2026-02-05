@@ -399,7 +399,7 @@
                             {% if order.status == 'new' %}bg-warning text-dark
                             {% elif order.status == 'approved' %}bg-info text-dark
                             {% elif order.status == 'purchasing' %}bg-primary
-                            {% elif order.status == 'in_transit' %}bg-secondary
+                            {% elif order.status == 'transit' %}bg-secondary
                             {% elif order.status == 'completed' %}bg-success
                             {% else %}bg-dark border border-secondary{% endif %}">
                             {{ order.get_status_display }}

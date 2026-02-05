@@ -98,6 +98,7 @@
                         <div class="kpi-label text-muted">Погоджено</div>
                     </div>
                 </div>
+                <a href="{% url 'order_list' %}?status=approved" class="stretched-link"></a>
             </div>
         </div>
         <div class="col-6 col-lg-3">
@@ -111,6 +112,7 @@
                         <div class="kpi-label text-muted">Закупівля</div>
                     </div>
                 </div>
+                <a href="{% url 'logistics_monitor' %}" class="stretched-link"></a>
             </div>
         </div>
         <div class="col-6 col-lg-3">
@@ -198,7 +200,7 @@
                                         <span class="badge bg-success rounded-pill">Погоджено</span>
                                     {% elif order.status == 'purchasing' %}
                                         <span class="badge bg-warning text-dark rounded-pill">Закупівля</span>
-                                    {% elif order.status == 'in_transit' %}
+                                    {% elif order.status == 'transit' %}
                                         <span class="badge bg-info text-dark rounded-pill">В дорозі</span>
                                     {% elif order.status == 'completed' %}
                                         <span class="badge bg-secondary rounded-pill">Виконано</span>

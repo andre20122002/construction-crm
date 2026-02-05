@@ -60,6 +60,7 @@ def dashboard(request):
         'new': base_orders.filter(status='new').count(),
         'approved': base_orders.filter(status='approved').count(),
         'purchasing': base_orders.filter(status='purchasing').count(),
+        'transit': base_orders.filter(status='transit').count(),
         'active_total': base_orders.exclude(status__in=['completed', 'rejected', 'draft']).count()
     }
 
