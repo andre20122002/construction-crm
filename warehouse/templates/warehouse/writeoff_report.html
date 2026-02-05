@@ -35,6 +35,10 @@
         font-size: 0.75rem;
         padding: 0.35em 0.65em;
     }
+    @media print {
+        .no-print { display: none !important; }
+        .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+    }
 </style>
 {% endblock %}
 
@@ -49,9 +53,14 @@
             </h1>
             <p class="text-muted small mb-0">Витрати на роботи та непередбачені втрати</p>
         </div>
-        <button onclick="window.print()" class="btn btn-outline-dark no-print">
-            <i class="bi bi-printer me-2"></i>Друк
-        </button>
+        <div class="d-flex gap-2 no-print">
+            <a href="?export=excel{% if f_date_from %}&date_from={{ f_date_from }}{% endif %}{% if f_date_to %}&date_to={{ f_date_to }}{% endif %}" class="btn btn-success" title="Експорт в Excel">
+                <i class="bi bi-file-earmark-excel me-1"></i>Excel
+            </a>
+            <button onclick="window.print()" class="btn btn-outline-dark">
+                <i class="bi bi-printer me-1"></i>Друк
+            </button>
+        </div>
     </div>
 
     {# === STATS CARDS === #}

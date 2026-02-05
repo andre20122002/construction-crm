@@ -143,6 +143,18 @@ class OrderForm(forms.ModelForm):
             'request_photo': forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*,.pdf'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+
+        # Для прораба (не staff) - обмежуємо тільки його складами
+        if user and not user.is_staff:
+            if hasattr(user, 'profile') and user.profile.warehouses.exists():
+                self.fields['warehouse'].queryset = user.profile.warehouses.all()
+            else:
+                # Якщо у прораба немає призначених складів - порожній список
+                self.fields['warehouse'].queryset = Warehouse.objects.none()
+
     def clean_request_photo(self):
         """Валідація фото/документа заявки."""
         photo = self.cleaned_data.get('request_photo')

@@ -8,10 +8,36 @@
     /* Стилі для рядків Formset */
     .item-row { transition: background-color 0.2s; }
     .item-row:hover { background-color: #f8f9fa; }
-    
+
     /* Виправляємо відображення TomSelect у таблиці */
-    .ts-wrapper { min-width: 200px; }
-    .ts-control { border-radius: 6px; padding: 8px 12px; }
+    .ts-wrapper {
+        min-width: 200px;
+        width: 100%;
+    }
+    .ts-control {
+        border-radius: 6px;
+        padding: 8px 12px;
+    }
+    /* Фіксуємо dropdown - з'являється знизу */
+    .ts-dropdown {
+        position: absolute !important;
+        left: 0 !important;
+        right: auto !important;
+        width: 100% !important;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    /* Фіксуємо позицію wrapper в комірці таблиці */
+    td .ts-wrapper {
+        position: relative;
+    }
+    /* Дозволяємо overflow для таблиці, щоб dropdown не обрізався */
+    .table-responsive {
+        overflow: visible !important;
+    }
+    #formset-container {
+        overflow: visible;
+    }
 
     /* === UX File Upload Styles === */
     .upload-box {
@@ -252,18 +278,17 @@
                     </table>
                 </div>
                 
-                <!-- Порожня форма для JS (Hidden) -->
-                <div id="empty-form" style="display:none;">
+                <!-- Порожня форма для JS (Hidden) - використовуємо template для валідного HTML -->
+                <template id="empty-form">
                     <tr class="item-row">
                         <td class="px-3">{{ formset.empty_form.material }}</td>
                         <td>{{ formset.empty_form.quantity }}</td>
                         <td class="text-center">
                             <div class="form-check d-none">{{ formset.empty_form.DELETE }}</div>
-                            <!-- Використовуємо data-action замість onclick -->
                             <i class="bi bi-x-circle-fill fs-5 btn-remove" data-action="remove-row"></i>
                         </td>
                     </tr>
-                </div>
+                </template>
             </div>
         </div>
 

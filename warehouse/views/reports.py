@@ -12,6 +12,76 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from decimal import Decimal, ROUND_HALF_UP
 
 from ..models import Transaction, Order, OrderItem, Warehouse, Material, Supplier, AuditLog
+
+
+# ==============================================================================
+# HELPER: EXCEL EXPORT
+# ==============================================================================
+
+def create_excel_response(headers, data_rows, filename, sheet_title="Report"):
+    """
+    Створює Excel файл зі стилізованими заголовками та даними.
+
+    Args:
+        headers: список заголовків колонок
+        data_rows: список рядків даних (кожен рядок - список значень)
+        filename: назва файлу для завантаження
+        sheet_title: назва листа
+
+    Returns:
+        HttpResponse з Excel файлом
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_title
+
+    # Styles
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Headers
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
+    # Data rows
+    for row_idx, row_data in enumerate(data_rows, start=2):
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = border
+            # Вирівнювання чисел праворуч
+            if isinstance(value, (int, float, Decimal)):
+                cell.alignment = Alignment(horizontal='right')
+
+    # Autosize columns
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                cell_len = len(str(cell.value)) if cell.value is not None else 0
+                if cell_len > max_length:
+                    max_length = cell_len
+            except (TypeError, AttributeError):
+                pass
+        adjusted_width = min(max_length + 2, 50)  # Max width 50
+        ws.column_dimensions[column].width = adjusted_width
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename={filename}'
+    wb.save(response)
+    return response
 from ..forms import PeriodReportForm
 from .utils import (
     get_user_warehouses, 
@@ -152,6 +222,26 @@ def writeoff_report(request):
     # Склади для фільтру (тільки дозволені)
     warehouses = get_allowed_warehouses(request.user)
 
+    # EXPORT TO EXCEL
+    if request.GET.get('export') == 'excel':
+        headers = ['Дата', 'Об\'єкт', 'Матеріал', 'Кількість', 'Од.', 'Ціна', 'Сума', 'Тип', 'Причина', 'Автор']
+        rows = []
+        for row in report_data:
+            rows.append([
+                row['date'].strftime('%d.%m.%Y') if row['date'] else '',
+                row['warehouse'],
+                row['material'],
+                float(row['quantity']),
+                row['unit'],
+                float(row['price']),
+                float(row['sum']),
+                'Роботи' if row['type'] == 'OUT' else 'Втрата',
+                row['reason'] or '',
+                row['author']
+            ])
+        filename = f"Writeoff_Report_{timezone.now().strftime('%Y-%m-%d')}.xlsx"
+        return create_excel_response(headers, rows, filename, "Списання")
+
     return render(request, 'warehouse/writeoff_report.html', {
         'report_data': report_data,
         'stats': stats,
@@ -235,6 +325,24 @@ def period_report(request):
                 'end_balance': end_balance,
                 'total_value': val
             })
+
+    # EXPORT TO EXCEL
+    if request.GET.get('export') == 'excel' and report_data:
+        headers = ['Категорія', 'Матеріал', 'Од.', 'Поч. залишок', 'Прихід', 'Розхід', 'Кін. залишок', 'Сума (грн)']
+        rows = []
+        for row in report_data:
+            rows.append([
+                row['category'],
+                row['material'].name,
+                row['material'].unit,
+                float(row['start_balance']),
+                float(row['income']),
+                float(row['outcome']),
+                float(row['end_balance']),
+                float(row['total_value'])
+            ])
+        filename = f"Period_Report_{timezone.now().strftime('%Y-%m-%d')}.xlsx"
+        return create_excel_response(headers, rows, filename, "Оборотка")
 
     return render(request, 'warehouse/period_report.html', {
         'form': form,
@@ -585,18 +693,21 @@ def planning_report(request):
     """
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
-    
+    f_priority = request.GET.get('priority')
+
     # Вибираємо активні заявки (які ще не виконані і не відхилені)
     # Статуси: new, approved, purchasing
     # Фільтруємо по доступу
     base_qs = restrict_warehouses_qs(Order.objects.all(), request.user)
-    
+
     qs = base_qs.filter(status__in=['new', 'approved', 'purchasing']).select_related('created_by', 'warehouse').order_by('expected_date')
-    
+
     if date_from:
         qs = qs.filter(expected_date__gte=date_from)
     if date_to:
         qs = qs.filter(expected_date__lte=date_to)
+    if f_priority:
+        qs = qs.filter(priority=f_priority)
         
     report_data = []
     
@@ -619,10 +730,27 @@ def planning_report(request):
             'date_needed': order.expected_date
         })
 
+    # EXPORT TO EXCEL
+    if request.GET.get('export') == 'excel' and report_data:
+        headers = ['Дата потреби', 'Заявка #', 'Об\'єкт', 'Пріоритет', 'Відповідальний', 'Статус']
+        rows = []
+        for row in report_data:
+            rows.append([
+                row['date_needed'].strftime('%d.%m.%Y') if row['date_needed'] else '',
+                row['order'].id,
+                row['order'].warehouse.name,
+                row['order'].get_priority_display(),
+                row['responsible'],
+                row['status_label']
+            ])
+        filename = f"Planning_Report_{timezone.now().strftime('%Y-%m-%d')}.xlsx"
+        return create_excel_response(headers, rows, filename, "План закупівель")
+
     return render(request, 'warehouse/planning_report.html', {
         'report_data': report_data,
         'date_from': date_from,
-        'date_to': date_to
+        'date_to': date_to,
+        'f_priority': f_priority
     })
 
 # ==============================================================================
@@ -634,9 +762,18 @@ def suppliers_rating(request):
     """
     Звіт: Рейтинг постачальників (на основі історії закупівель).
     """
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
     # Тут ми фільтруємо постачальників на основі доступних користувачу замовлень
     # Спочатку дістаємо всі доступні замовлення
     allowed_orders = restrict_warehouses_qs(Order.objects.all(), request.user)
+
+    # Фільтр по датах (за датою створення замовлення)
+    if date_from:
+        allowed_orders = allowed_orders.filter(created_at__date__gte=date_from)
+    if date_to:
+        allowed_orders = allowed_orders.filter(created_at__date__lte=date_to)
     
     # Отримуємо всіх постачальників, а кількість замовлень рахуємо тільки по дозволених
     # FIX: Correct backward relation to OrderItem via 'orderitem' and then to Order
@@ -666,9 +803,25 @@ def suppliers_rating(request):
             'reliability': reliability,
             'rel_class': rel_class
         })
-        
+
+    # EXPORT TO EXCEL
+    if request.GET.get('export') == 'excel' and report_data:
+        headers = ['Назва', 'Контакт', 'Замовлень', 'Надійність (%)']
+        rows = []
+        for row in report_data:
+            rows.append([
+                row['name'],
+                row['contact'],
+                row['orders_count'],
+                row['reliability']
+            ])
+        filename = f"Suppliers_Rating_{timezone.now().strftime('%Y-%m-%d')}.xlsx"
+        return create_excel_response(headers, rows, filename, "Постачальники")
+
     return render(request, 'warehouse/suppliers_rating.html', {
-        'report_data': report_data
+        'report_data': report_data,
+        'date_from': date_from,
+        'date_to': date_to
     })
 
 # Aliases for compatibility with warehouse/urls.py

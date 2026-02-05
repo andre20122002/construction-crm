@@ -108,15 +108,15 @@
         <div class="py-2 flex-grow-1 overflow-auto">
             {% with route_name=request.resolver_match.url_name %}
             <ul class="nav flex-column">
-                <!-- Спільний пункт: Дашборд (Home) -->
-                <li class="nav-item">
-                    <a href="{% url 'home' %}" class="nav-link {% if route_name == 'home' %}active{% endif %}">
-                        <i class="bi bi-speedometer2"></i> Дашборд
-                    </a>
-                </li>
-                
                 {% if user.is_staff %}
                     <!-- === МЕНЮ МЕНЕДЖЕРА === -->
+
+                    <!-- Дашборд (тільки для менеджера) -->
+                    <li class="nav-item">
+                        <a href="{% url 'home' %}" class="nav-link {% if route_name == 'home' %}active{% endif %}">
+                            <i class="bi bi-speedometer2"></i> Дашборд
+                        </a>
+                    </li>
 
                     <!-- ЗАКУПІВЛІ - щоденна робота -->
                     <div class="sidebar-heading">Закупівлі</div>
@@ -362,25 +362,28 @@
         }
 
         // Автоініціалізація Tom Select для всіх селектів з класом .tom-select
+        // (крім тих, що всередині #empty-form - шаблон для динамічного formset)
         document.addEventListener("DOMContentLoaded", function() {
-            document.querySelectorAll('.tom-select').forEach(function(el) {
+            document.querySelectorAll('.tom-select:not(#empty-form .tom-select)').forEach(function(el) {
                 new TomSelect(el, {
                     create: false,
                     sortField: {
                         field: "text",
                         direction: "asc"
                     },
-                    placeholder: "Пошук..."
+                    placeholder: "Оберіть..."
                 });
             });
         });
 
         // Експортуємо функцію в window, щоб викликати її з інших скриптів (наприклад, при додаванні рядків у FormSet)
         window.initTomSelect = function(el) {
+            // Перевіряємо, чи не ініціалізовано вже
+            if (el.tomselect) return;
             new TomSelect(el, {
                 create: false,
                 sortField: { field: "text", direction: "asc" },
-                placeholder: "Пошук..."
+                placeholder: "Оберіть..."
             });
         };
     </script>

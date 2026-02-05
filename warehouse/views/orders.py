@@ -8,6 +8,9 @@ from django.http import HttpResponseForbidden, JsonResponse, HttpResponse
 from django.db.models import Q
 import json
 import logging
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from decimal import Decimal
 
 logger = logging.getLogger('warehouse')
 
@@ -29,24 +32,88 @@ def order_list(request):
     Відображає всі заявки, відсортовані від найновіших.
     """
     # Оптимізація: завантажуємо пов'язані об'єкти (склад, автор) та товари (items + матеріали)
-    orders = Order.objects.select_related('warehouse', 'created_by') \
+    orders = Order.objects.select_related('warehouse', 'created_by', 'source_warehouse') \
                           .prefetch_related('items__material') \
                           .order_by('-created_at')
-    
-    # Фільтрація по статусу (якщо передано в GET параметрах)
+
+    # Фільтрація по статусу
     status = request.GET.get('status')
     if status:
         orders = orders.filter(status=status)
-    
-    # Можна додати базову статистику для швидкого огляду (опціонально)
-    # context_stats = {
-    #     'total': orders.count(),
-    #     'pending': orders.filter(status='new').count()
-    # }
-        
+
+    # Фільтрація по датах
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    if date_from:
+        orders = orders.filter(created_at__date__gte=date_from)
+    if date_to:
+        orders = orders.filter(created_at__date__lte=date_to)
+
+    # EXPORT TO EXCEL
+    if request.GET.get('export') == 'excel':
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Журнал заявок"
+
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+
+        # Headers
+        headers = ['ID', 'Дата', 'Тип', 'Об\'єкт', 'Статус', 'Пріоритет', 'Автор', 'Позицій', 'Сума (грн)']
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # Data
+        for order in orders:
+            order_type = "Переміщення" if order.source_warehouse else "Закупівля"
+            total_sum = sum(item.quantity * (item.material.current_avg_price or 0) for item in order.items.all())
+            ws.append([
+                order.id,
+                order.created_at.strftime('%d.%m.%Y'),
+                order_type,
+                order.warehouse.name,
+                order.get_status_display(),
+                order.get_priority_display(),
+                order.created_by.get_full_name() if order.created_by else "—",
+                order.items.count(),
+                float(total_sum)
+            ])
+
+        # Autosize columns
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    cell_len = len(str(cell.value)) if cell.value else 0
+                    if cell_len > max_length:
+                        max_length = cell_len
+                except:
+                    pass
+            ws.column_dimensions[column].width = min(max_length + 2, 50)
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"Orders_{timezone.now().strftime('%Y-%m-%d')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename={filename}'
+        wb.save(response)
+        return response
+
     return render(request, 'warehouse/order_list.html', {
-        'orders': orders, 
-        'f_status': status
+        'orders': orders,
+        'f_status': status,
+        'f_date_from': date_from,
+        'f_date_to': date_to
     })
 
 
@@ -60,22 +127,22 @@ def create_order(request):
     Створення нової заявки.
     """
     if request.method == 'POST':
-        form = OrderForm(request.POST, request.FILES)
+        form = OrderForm(request.POST, request.FILES, user=request.user)
         formset = OrderItemFormSet(request.POST)
-        
+
         if form.is_valid() and formset.is_valid():
             try:
                 with transaction.atomic():
                     order = form.save(commit=False)
                     order.created_by = request.user
                     order.save()
-                    
+
                     formset.instance = order
                     formset.save()
-                    
+
                     log_audit(request, 'CREATE', order, new_val="Створено заявку")
                     messages.success(request, f"Заявку #{order.id} успішно створено!")
-                    
+
                     if request.user.is_staff:
                         return redirect('manager_order_detail', pk=order.id)
                     else:
@@ -86,7 +153,7 @@ def create_order(request):
                 logger.exception(f"Order creation failed for user {request.user.id}")
                 messages.error(request, "Помилка при створенні заявки. Спробуйте ще раз.")
     else:
-        form = OrderForm()
+        form = OrderForm(user=request.user)
         formset = OrderItemFormSet()
 
     return render(request, 'warehouse/create_order.html', {
@@ -116,18 +183,18 @@ def edit_order(request, pk):
             return redirect('foreman_order_detail', pk=order.id)
 
     if request.method == 'POST':
-        form = OrderForm(request.POST, request.FILES, instance=order)
+        form = OrderForm(request.POST, request.FILES, instance=order, user=request.user)
         formset = OrderItemFormSet(request.POST, instance=order)
-        
+
         if form.is_valid() and formset.is_valid():
             try:
                 with transaction.atomic():
                     form.save()
                     formset.save()
-                    
+
                     log_audit(request, 'UPDATE', order, new_val="Редаговано заявку")
                     messages.success(request, f"Заявку #{order.id} успішно оновлено!")
-                    
+
                     if request.user.is_staff:
                         return redirect('manager_order_detail', pk=order.id)
                     else:
@@ -138,7 +205,7 @@ def edit_order(request, pk):
                 logger.exception(f"Order edit failed for order {order.id}, user {request.user.id}")
                 messages.error(request, "Помилка при збереженні. Спробуйте ще раз.")
     else:
-        form = OrderForm(instance=order)
+        form = OrderForm(instance=order, user=request.user)
         formset = OrderItemFormSet(instance=order)
 
     return render(request, 'warehouse/create_order.html', {

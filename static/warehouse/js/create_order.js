@@ -166,22 +166,34 @@ window.CreateOrder = {
         if (addBtn && container && emptyFormTemplate && totalForms) {
             addBtn.addEventListener('click', function() {
                 const count = parseInt(totalForms.value);
-                // Беремо HTML з шаблону і замінюємо __prefix__ на поточний індекс
-                const newFormHtml = emptyFormTemplate.innerHTML.replace(/__prefix__/g, count);
-                
-                // Додаємо HTML в таблицю
-                container.insertAdjacentHTML('beforeend', newFormHtml);
-                
+
+                // Клонуємо вміст template
+                const templateContent = emptyFormTemplate.content.cloneNode(true);
+
+                // Замінюємо __prefix__ на поточний індекс в усіх атрибутах
+                const newRow = templateContent.querySelector('tr');
+                newRow.innerHTML = newRow.innerHTML.replace(/__prefix__/g, count);
+
+                // Додаємо в таблицю
+                container.appendChild(newRow);
+
                 // Оновлюємо лічильник форм
                 totalForms.value = count + 1;
-                
+
                 // Знаходимо новостворений селект і ініціалізуємо TomSelect
-                const newRow = container.lastElementChild;
-                const newSelect = newRow.querySelector('select.tom-select'); 
-                
-                // Використовуємо глобальну функцію ініціалізації TomSelect, якщо вона доступна
-                if (newSelect && window.initTomSelect) {
-                    window.initTomSelect(newSelect);
+                const addedRow = container.lastElementChild;
+                const newSelect = addedRow.querySelector('select');
+
+                // Ініціалізуємо TomSelect для нового селекту
+                if (newSelect && typeof TomSelect !== 'undefined') {
+                    // Невелика затримка, щоб DOM оновився
+                    setTimeout(function() {
+                        new TomSelect(newSelect, {
+                            create: false,
+                            sortField: { field: "text", direction: "asc" },
+                            placeholder: "Оберіть матеріал..."
+                        });
+                    }, 10);
                 }
             });
         }

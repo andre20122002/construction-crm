@@ -7,9 +7,16 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h3 class="fw-bold"><i class="bi bi-calendar-range me-2"></i> Оборотна відомість матеріалів</h3>
-        <button onclick="window.print()" class="btn btn-outline-secondary no-print">
-            <i class="bi bi-printer me-2"></i> Друк
-        </button>
+        <div class="d-flex gap-2 no-print">
+            {% if report_data %}
+            <a href="?export=excel&start_date={{ form.start_date.value|default:'' }}&end_date={{ form.end_date.value|default:'' }}&warehouse={{ form.warehouse.value|default:'' }}&category={{ form.category.value|default:'' }}" class="btn btn-success">
+                <i class="bi bi-file-earmark-excel me-1"></i>Excel
+            </a>
+            {% endif %}
+            <button onclick="window.print()" class="btn btn-outline-secondary">
+                <i class="bi bi-printer me-1"></i>Друк
+            </button>
+        </div>
     </div>
 
     <!-- Фільтр -->

@@ -50,9 +50,16 @@
             </h1>
             <p class="text-muted small mb-0">Очікувані поставки та терміни виконання</p>
         </div>
-        <button onclick="window.print()" class="btn btn-outline-dark no-print">
-            <i class="bi bi-printer me-2"></i>Друк
-        </button>
+        <div class="d-flex gap-2 no-print">
+            {% if report_data %}
+            <a href="?export=excel{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}{% if f_priority %}&priority={{ f_priority }}{% endif %}" class="btn btn-success">
+                <i class="bi bi-file-earmark-excel me-1"></i>Excel
+            </a>
+            {% endif %}
+            <button onclick="window.print()" class="btn btn-outline-dark">
+                <i class="bi bi-printer me-1"></i>Друк
+            </button>
+        </div>
     </div>
 
     {# === FILTERS === #}
