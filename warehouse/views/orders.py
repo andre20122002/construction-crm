@@ -7,11 +7,16 @@ from django.utils import timezone
 from django.http import HttpResponseForbidden, JsonResponse, HttpResponse
 from django.db.models import Q
 import json
+import logging
+
+logger = logging.getLogger('warehouse')
 
 from ..models import Order, OrderItem, Warehouse, Material, Supplier, AuditLog
 from ..forms import OrderForm, OrderItemFormSet
 from ..services import inventory
+from ..services.inventory import InsufficientStockError
 from .utils import log_audit, check_access
+from ..decorators import rate_limit
 
 # ==============================================================================
 # СПИСОК ЗАЯВОК (ORDER LIST)
@@ -75,8 +80,11 @@ def create_order(request):
                         return redirect('manager_order_detail', pk=order.id)
                     else:
                         return redirect('foreman_order_detail', pk=order.id)
+            except (ValidationError, ValueError) as e:
+                messages.error(request, f"Помилка валідації: {e}")
             except Exception as e:
-                messages.error(request, f"Помилка: {e}")
+                logger.exception(f"Order creation failed for user {request.user.id}")
+                messages.error(request, "Помилка при створенні заявки. Спробуйте ще раз.")
     else:
         form = OrderForm()
         formset = OrderItemFormSet()
@@ -124,8 +132,11 @@ def edit_order(request, pk):
                         return redirect('manager_order_detail', pk=order.id)
                     else:
                         return redirect('foreman_order_detail', pk=order.id)
+            except (ValidationError, ValueError) as e:
+                messages.error(request, f"Помилка валідації: {e}")
             except Exception as e:
-                messages.error(request, f"Помилка при збереженні: {e}")
+                logger.exception(f"Order edit failed for order {order.id}, user {request.user.id}")
+                messages.error(request, "Помилка при збереженні. Спробуйте ще раз.")
     else:
         form = OrderForm(instance=order)
         formset = OrderItemFormSet(instance=order)
@@ -231,12 +242,17 @@ def confirm_receipt(request, pk):
         
         try:
             inventory.process_order_receipt(order, items_data, request.user, proof_photo, comment)
-            
+
             log_audit(request, 'ORDER_RECEIVED', order, new_val="Items added to stock")
             messages.success(request, f"Заявку #{order.id} успішно прийнято на склад!")
-            
+
+        except InsufficientStockError as e:
+            messages.error(request, f"Недостатньо товару на складі: {e.material.name}")
+        except (ValidationError, ValueError) as e:
+            messages.error(request, f"Помилка валідації: {e}")
         except Exception as e:
-            messages.error(request, f"Помилка прийому: {e}")
+            logger.exception(f"Order receipt failed for order {order.id}, user {request.user.id}")
+            messages.error(request, "Помилка при прийомі товару. Спробуйте ще раз.")
             
     # Редірект залежно від ролі
     if request.user.is_staff:
@@ -250,6 +266,7 @@ def confirm_receipt(request, pk):
 # ==============================================================================
 
 @login_required
+@rate_limit(requests_per_minute=30, key_prefix='ajax_order_dup')
 def check_order_duplicates(request):
     """
     AJAX: Перевіряє, чи не створювали схожу заявку на цей склад недавно.

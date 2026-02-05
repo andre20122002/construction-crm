@@ -7,6 +7,9 @@ from django.db.models import Sum, Case, When, F, DecimalField, Q
 from django.utils import timezone
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
+import logging
+
+logger = logging.getLogger('warehouse')
 
 from ..models import Transaction, Order, Warehouse, Material, ConstructionStage 
 from ..forms import TransactionForm
@@ -238,7 +241,8 @@ def add_transaction(request):
             except ValidationError as e:
                 messages.error(request, str(e))
             except Exception as e:
-                messages.error(request, f"Помилка: {e}")
+                logger.exception(f"Transaction creation failed for user {request.user.id}")
+                messages.error(request, "Помилка при створенні транзакції. Спробуйте ще раз.")
     else:
         # GET request
         form = TransactionForm()
@@ -346,7 +350,8 @@ def add_transfer(request):
                 except ValidationError as e:
                     messages.error(request, str(e))
                 except Exception as e:
-                    messages.error(request, f"Помилка: {e}")
+                    logger.exception(f"Transfer creation failed for user {request.user.id}")
+                    messages.error(request, "Помилка при переміщенні. Спробуйте ще раз.")
     else:
         form = TransferForm()
         # Фільтруємо склади (ТІЛЬКИ ДОЗВОЛЕНІ)
